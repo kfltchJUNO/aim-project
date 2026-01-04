@@ -1,0 +1,39 @@
+제작의뢰 처리 프로세스
+
+1단계: 고객에게 데이터 받기 (양식 제공)
+고객에게 카톡이나 메일로 아래 양식을 보내서 채워달라고 하세요.
+
+[명함 제작 요청 양식]
+영문 ID (주소로 쓰임, 예: kang):
+이름 / 직함:
+한 줄 소개:
+AI 학습용 TMI (성격, 말투, 특징 등 자유롭게):
+주요 경력 (기간 / 내용):
+자격증/학력:
+포트폴리오/수상 등:
+기타 쓰고 싶은 내용:
+
+2단계: AI(제미나이)에게 "JSON 변환" 시키기
+고객이 준 텍스트를 일일이 코드로 옮기지 마세요. 제미나이에게 시키면 됩니다.
+
+[프롬프트 복사해서 쓰세요]
+"내가 주는 텍스트 데이터를 아래 JSON 형식에 맞춰서 변환해줘.
+history, certifications, awards는 배열 형태야.
+tmi_data는 하나의 긴 문자열로 합쳐줘.
+없는 내용은 빈 배열 []로 둬.
+오직 JSON 코드만 출력해.
+[JSON 형식] { name: "", role: "", intro: "", credits: 1000, owner_email: "", profile_img: "https://placehold.co/150", tmi_data: "", history: [{ date: "", title: "", desc: "" }], certifications: [{ title: "", desc: "" }], awards: [{ title: "", desc: "" }] }
+[고객 데이터] (여기에 고객이 준 내용을 붙여넣으세요)"
+
+
+3단계: setup/page.tsx에 붙여넣고 버튼 누르기
+이제 VS Code로 돌아와서 app/setup/page.tsx 파일만 수정하면 됩니다. 이 파일은 "데이터 주입기" 역할만 하므로, 계속 재사용합니다.
+
+[작업 순서]
+app/setup/page.tsx 파일을 엽니다.
+const CLIENT_DATA = { ... } 안에 AI가 만들어준 JSON을 덮어씌웁니다.
+가장 중요: setDoc 부분의 ID를 고객 ID로 바꿉니다.
+await setDoc(doc(db, "users", "kang"), ...
+👉 await setDoc(doc(db, "users", "kim_teacher"), ... (변경!)
+브라우저에서 http://localhost:3000/setup 접속 -> [생성하기] 클릭.
+끝! http://localhost:3000/kim_teacher 접속해서 확인
