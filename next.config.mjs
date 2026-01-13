@@ -1,13 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 1. 타입스크립트 에러 무시 (일단 배포부터 하기 위함)
+  reactStrictMode: true,
+  
+  // 1. 타입스크립트 오류 무시하고 빌드 진행
   typescript: {
     ignoreBuildErrors: true,
   },
-  // 2. ESLint 에러 무시
+  
+  // 2. ESLint 문법 오류 무시하고 빌드 진행
   eslint: {
     ignoreDuringBuilds: true,
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

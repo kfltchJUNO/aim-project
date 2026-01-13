@@ -1,0 +1,18 @@
+👨‍💼 사장님(선생님)의 업무 매뉴얼 (입금 후 할 일)
+이제 고객이 입금하면, 선생님이 파이어베이스 콘솔에서 "딱 한 번" 수동으로 길을 터주시면 됩니다.
+파이어베이스 콘솔 접속 -> Firestore Database.
+users 컬렉션 클릭 -> [문서 추가] 버튼 클릭.
+문서 ID: 고객이 원하는 ID (예: customer1) 직접 입력.
+필드 추가:
+필드명: owner_email / 타입: string / 값: customer@gmail.com (고객 이메일)
+필드명: credits / 타입: number / 값: 1000 (구매한 토큰 수)
+필드명: name / 타입: string / 값: 홍길동 (기본 이름)
+[저장] 클릭.
+
+
+베이직/스마트 플랜 구분
+파이어베이스 콘솔 -> Firestore -> users 컬렉션 -> 해당 유저 문서
+필드 추가:
+필드명: enable_ai
+타입: boolean
+값: true (AI 플랜) 또는 false (베이직 플랜)
