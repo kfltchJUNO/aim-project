@@ -1,8 +1,7 @@
+// components/ChatBot.tsx
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { db } from '@/lib/firebase';
-import { doc, runTransaction, collection, serverTimestamp } from 'firebase/firestore';
 
 type Props = {
   context: any; 
@@ -18,148 +17,159 @@ export default function ChatBot({ context, username }: Props) {
 
   const ownerName = context?.name || '명함 주인';
 
+  // 초기 메시지 설정
   useEffect(() => {
-    if (context) {
+    if (context && messages.length === 0) {
       setMessages([
-        // 멘트 수정됨 (토큰 언급 삭제)
         { role: 'bot', text: `안녕하세요! ${ownerName}님의 AI 비서입니다. 무엇이든 물어봐 주세요. 😄` }
       ]);
     }
-  }, [context, ownerName]);
+  }, [context, ownerName, messages.length]);
 
+  // 스크롤 자동 내리기
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, isOpen]);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
-
     const userMsg = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setLoading(true);
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const userRef = doc(db, "users", username);
-        const userDoc = await transaction.get(userRef);
-        
-        if (!userDoc.exists()) throw new Error("사용자 정보를 찾을 수 없습니다.");
-        
-        const currentCredits = userDoc.data().credits || 0;
-        if (currentCredits < 2) {
-          throw new Error("토큰이 부족합니다.");
-        }
-
-        transaction.update(userRef, { credits: currentCredits - 2 });
-        
-        const newLogRef = doc(collection(db, "users", username, "logs"));
-        transaction.set(newLogRef, {
-          type: '사용',
-          amount: -2,
-          reason: 'AI 챗봇 대화',
-          date: serverTimestamp()
-        });
-      });
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
           context: context,
+          username: username,
           mode: 'chat'
         }),
       });
-
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply }]);
-
-    } catch (error: any) {
-      console.error(error);
-      let errorMsg = "오류가 발생했습니다.";
-      // 에러 메시지에서도 토큰 부족 시 '서비스 점검' 등으로 돌려 말하기
-      if (error.message === "토큰이 부족합니다.") errorMsg = "현재 AI 서비스가 잠시 중단되었습니다. (Limit Reached)";
-      setMessages(prev => [...prev, { role: 'bot', text: errorMsg }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "죄송합니다. 오류가 발생했습니다." }]);
+    } catch (error) {
+      setMessages(prev => [...prev, { role: 'bot', text: "네트워크 오류가 발생했습니다." }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-      handleSend();
-    }
-  };
-
   return (
     <>
+      {/* 1. 둥둥 떠있는 버튼 (플로팅 버튼) - 디자인 개선 */}
       {!isOpen && (
         <button 
-            onClick={() => setIsOpen(true)} 
-            style={{
-                position:'fixed', bottom:'20px', right:'20px', 
-                width:'60px', height:'60px', borderRadius:'50%', 
-                background:'#1a237e', color:'white', border:'none', 
-                fontSize:'30px', zIndex:1000, cursor:'pointer',
-                boxShadow:'0 4px 12px rgba(0,0,0,0.3)'
-            }}>
-            💬
+          onClick={() => setIsOpen(true)}
+          style={{
+            position: 'fixed', 
+            bottom: '25px', 
+            right: '25px',
+            width: '60px', 
+            height: '60px', 
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #1a237e 0%, #3949ab 100%)', // 고급스러운 그라데이션
+            color: 'white', 
+            border: 'none', 
+            fontSize: '28px',
+            boxShadow: '0 6px 20px rgba(26, 35, 126, 0.4)', // 부드러운 그림자
+            cursor: 'pointer', 
+            zIndex: 1000,
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            transition: 'transform 0.2s ease', // 눌렀을 때 애니메이션 효과용 (CSS hover 시)
+          }}
+          aria-label="AI 챗봇 열기"
+        >
+          💬
         </button>
       )}
 
+      {/* 2. 채팅창 본문 */}
       {isOpen && (
         <div style={{
-            position:'fixed', bottom:'20px', right:'20px', 
-            width:'350px', height:'500px', background:'white', 
-            borderRadius:'20px', border:'1px solid #ddd', 
-            display:'flex', flexDirection:'column', zIndex:1001, 
-            boxShadow:'0 10px 30px rgba(0,0,0,0.2)', overflow:'hidden'
+          position: 'fixed', 
+          bottom: '25px', 
+          right: '25px',
+          width: '340px', 
+          height: '520px', 
+          maxWidth: 'calc(100vw - 50px)', // 모바일 대응
+          background: 'white',
+          borderRadius: '20px', 
+          boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+          display: 'flex', 
+          flexDirection: 'column', 
+          overflow: 'hidden', 
+          zIndex: 1001,
+          border: '1px solid #eee'
         }}>
-          {/* 헤더 멘트 수정됨 (토큰 언급 삭제) */}
-          <div style={{padding:'15px', background:'#1a237e', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <span style={{fontWeight:'bold'}}>🤖 AI 비서</span>
-            <button onClick={()=>setIsOpen(false)} style={{background:'none', border:'none', color:'white', fontSize:'1.2rem', cursor:'pointer'}}>×</button>
+          {/* 헤더 */}
+          <div style={{
+            padding: '18px', 
+            background: '#1a237e', 
+            color: 'white',
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            fontWeight: 'bold'
+          }}>
+            <span style={{display:'flex', alignItems:'center', gap:'8px'}}>🤖 AI 비서 <span style={{fontSize:'0.7rem', opacity:0.8, fontWeight:'normal'}}>(2토큰/건)</span></span>
+            <button onClick={() => setIsOpen(false)} style={{background:'none', border:'none', color:'white', fontSize:'1.4rem', cursor:'pointer', padding:'0 5px'}}>×</button>
           </div>
 
-          <div ref={scrollRef} style={{flex:1, padding:'15px', overflowY:'auto', background:'#f5f5f5'}}>
-            {messages.map((m, i) => (
-              <div key={i} style={{textAlign: m.role==='user'?'right':'left', marginBottom:'10px'}}>
-                <span style={{
-                    background: m.role==='user'?'#1a237e':'white', 
-                    color: m.role==='user'?'white':'#333', 
-                    padding:'8px 12px', borderRadius:'15px', 
-                    display:'inline-block', maxWidth:'80%', 
-                    wordBreak:'break-word', boxShadow:'0 1px 3px rgba(0,0,0,0.1)',
-                    fontSize:'0.9rem', lineHeight:'1.4'
+          {/* 메시지 영역 */}
+          <div ref={scrollRef} style={{flex: 1, padding: '15px', overflowY: 'auto', background: '#f8f9fa'}}>
+            {messages.map((msg, idx) => (
+              <div key={idx} style={{
+                marginBottom: '12px',
+                textAlign: msg.role === 'user' ? 'right' : 'left'
+              }}>
+                <div style={{
+                  display: 'inline-block',
+                  padding: '10px 15px',
+                  borderRadius: '18px',
+                  borderTopRightRadius: msg.role === 'user' ? '4px' : '18px',
+                  borderTopLeftRadius: msg.role === 'bot' ? '4px' : '18px',
+                  background: msg.role === 'user' ? '#1a237e' : 'white',
+                  color: msg.role === 'user' ? 'white' : '#333',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  maxWidth: '85%',
+                  wordBreak: 'break-word',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.5'
                 }}>
-                    {m.text}
-                </span>
+                  {msg.text}
+                </div>
               </div>
             ))}
-            {loading && <div style={{color:'#999', fontSize:'0.8rem', marginLeft:'10px'}}>입력 중... ✍️</div>}
+            {loading && <div style={{textAlign:'left', color:'#888', fontSize:'0.8rem', marginLeft:'10px', marginTop:'5px'}}>AI가 답변을 작성 중입니다... ✍️</div>}
           </div>
 
-          <div style={{padding:'10px', display:'flex', borderTop:'1px solid #eee', background:'white'}}>
+          {/* 입력 영역 */}
+          <div style={{padding: '12px', background: 'white', borderTop: '1px solid #eee', display: 'flex', gap:'8px'}}>
             <input 
-                value={input} 
-                onChange={e=>setInput(e.target.value)} 
-                onKeyDown={handleKeyDown}
-                style={{flex:1, padding:'10px', border:'1px solid #ddd', borderRadius:'20px', outline:'none'}} 
-                placeholder="질문하기..."
-                disabled={loading}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSend()}
+              placeholder="궁금한 점을 물어보세요..."
+              style={{flex: 1, padding: '12px', border: '1px solid #ddd', borderRadius: '25px', outline: 'none', fontSize:'0.95rem'}}
             />
             <button 
-                onClick={handleSend} 
-                disabled={loading}
-                style={{
-                    marginLeft:'8px', padding:'0 15px', 
-                    background: loading ? '#ccc' : '#1a237e', 
-                    color:'white', border:'none', borderRadius:'20px', 
-                    cursor: loading ? 'not-allowed' : 'pointer'
-                }}
+              onClick={handleSend}
+              disabled={loading}
+              style={{
+                padding: '0 20px', borderRadius: '25px',
+                border: 'none', background: loading ? '#ccc' : '#1a237e', color: 'white',
+                cursor: loading ? 'not-allowed' : 'pointer', fontWeight:'bold'
+              }}
             >
-                전송
+              전송
             </button>
           </div>
         </div>
