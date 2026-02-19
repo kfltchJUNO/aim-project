@@ -89,7 +89,7 @@ export default function MasterPage() {
     } catch (e) { alert("오류 발생"); }
   };
 
-  // 💎 [NEW] 이벤트 당첨 승인 처리
+  // 💎 이벤트 당첨 승인 처리
   const handleApproveClaim = async (claim: any) => {
       if(!confirm(`'${claim.userName}'님에게 당첨금 ${claim.amount} 토큰을 지급하시겠습니까?`)) return;
 
@@ -126,7 +126,7 @@ export default function MasterPage() {
       }
   };
 
-  // 💎 [NEW] 이벤트 당첨 거절 처리
+  // 💎 이벤트 당첨 거절 처리
   const handleRejectClaim = async (claimId: string) => {
       if(!confirm("이 당첨 내역을 취소(거절)하시겠습니까?")) return;
       try {
@@ -170,25 +170,50 @@ export default function MasterPage() {
         </div>
       </div>
 
-      {/* 2. 유저 목록 */}
-      <div style={{ display: 'grid', gap: '10px', maxHeight:'400px', overflowY:'auto', border:'1px solid #eee', borderRadius:'10px', padding:'10px' }}>
+      {/* 2. 유저 목록 (🔥 AI 교육 내용 모니터링 추가됨) */}
+      <div style={{ display: 'grid', gap: '15px', maxHeight:'500px', overflowY:'auto', border:'1px solid #eee', borderRadius:'10px', padding:'15px', background:'white' }}>
         {usersList.map((u) => (
-          <div key={u.id} style={{ borderBottom:'1px solid #eee', padding:'10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div>
-                <div style={{fontSize:'1rem', fontWeight:'bold'}}>{u.name} <span style={{fontSize:'0.8rem', color:'#888'}}>({u.id})</span></div>
-                <div style={{color:'#1565c0', fontWeight:'bold', fontSize:'0.9rem'}}>💎 {u.credits || 0}</div>
+          <div key={u.id} style={{ borderBottom:'1px solid #eee', paddingBottom:'15px', display:'flex', flexDirection:'column', gap:'10px' }}>
+            
+            {/* 상단: 유저 기본 정보 및 버튼 */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                    <div style={{fontSize:'1.1rem', fontWeight:'bold', display:'flex', alignItems:'center', gap:'8px'}}>
+                        {u.name} <span style={{fontSize:'0.8rem', background:'#f5f5f5', padding:'2px 6px', borderRadius:'5px', color:'#666'}}>ID: {u.id}</span>
+                    </div>
+                    <div style={{fontSize:'0.85rem', color:'#666', marginTop:'3px'}}>{u.owner_email}</div>
+                    <div style={{color:'#1565c0', fontWeight:'bold', fontSize:'0.95rem', marginTop:'5px'}}>💎 {u.credits || 0}</div>
+                </div>
+                <div style={{textAlign:'right', display:'flex', gap:'5px', alignItems:'center'}}>
+                    <button onClick={() => toggleAi(u.id, u.enable_ai)} style={{padding:'6px 10px', borderRadius:'5px', border:'none', cursor:'pointer', fontSize:'0.8rem', fontWeight:'bold', background: u.enable_ai ? '#e8f5e9' : '#ffebee', color: u.enable_ai ? '#2e7d32' : '#c62828'}}>
+                        {u.enable_ai ? 'AI ON' : 'AI OFF'}
+                    </button>
+                    <button onClick={() => handleCredit(u.id, u.credits, customAmount, u.name)} style={{background:'#1a237e', color:'white', padding:'6px 12px', borderRadius:'5px', border:'none', cursor:'pointer', fontSize:'0.8rem', fontWeight:'bold'}}>지급/차감</button>
+                </div>
             </div>
-            <div style={{textAlign:'right', display:'flex', gap:'5px', alignItems:'center'}}>
-                <button onClick={() => toggleAi(u.id, u.enable_ai)} style={{padding:'5px', borderRadius:'5px', border:'none', cursor:'pointer', fontSize:'0.7rem', background: u.enable_ai ? '#e8f5e9' : '#ffebee', color: u.enable_ai ? '#2e7d32' : '#c62828'}}>
-                    {u.enable_ai ? 'AI ON' : 'AI OFF'}
-                </button>
-                <button onClick={() => handleCredit(u.id, u.credits, customAmount, u.name)} style={{background:'#1a237e', color:'white', padding:'5px 10px', borderRadius:'5px', border:'none', cursor:'pointer', fontSize:'0.8rem'}}>지급/차감</button>
+
+            {/* 하단: 🔥 AI 교육 내용 모니터링 영역 */}
+            <div style={{ background: '#fff3e0', padding: '12px', borderRadius: '8px', border: '1px solid #ffe0b2' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#e65100', display:'flex', alignItems:'center', gap:'5px' }}>
+                    🤖 AI 교육 내용 모니터링
+                </h4>
+                {u.custom_knowledge && u.custom_knowledge.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#424242', fontSize: '0.85rem', lineHeight:'1.5' }}>
+                        {u.custom_knowledge.map((knowledge: string, i: number) => (
+                            <li key={i}>{knowledge}</li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div style={{ fontSize: '0.85rem', color: '#999' }}>입력된 교육 데이터가 없습니다.</div>
+                )}
             </div>
+
           </div>
         ))}
+        {usersList.length === 0 && <div style={{textAlign:'center', padding:'20px', color:'#999'}}>등록된 유저가 없습니다.</div>}
       </div>
 
-      {/* 3. 이벤트 설정 센터 (수정됨) */}
+      {/* 3. 이벤트 설정 센터 */}
       <div style={{marginTop:'40px', borderTop:'3px solid #eee', paddingTop:'30px'}}>
         <h2 style={{color:'#e65100', marginBottom:'15px'}}>🎉 이벤트 관제 센터</h2>
         
@@ -222,7 +247,7 @@ export default function MasterPage() {
             <button onClick={saveEventConfig} style={{padding:'12px', background:'#e65100', color:'white', borderRadius:'5px', fontWeight:'bold', border:'none', cursor:'pointer'}}>설정 저장하기</button>
         </div>
 
-        {/* 4. 승인 대기 목록 (NEW) */}
+        {/* 4. 승인 대기 목록 */}
         <div style={{marginTop:'30px'}}>
             <h3 style={{color:'#d84315'}}>⏳ 승인 대기 목록 ({pendingClaims.length}건)</h3>
             {pendingClaims.length === 0 ? <p style={{color:'#999'}}>대기 중인 요청이 없습니다.</p> : (

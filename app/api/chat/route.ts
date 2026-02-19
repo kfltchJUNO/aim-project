@@ -1,7 +1,7 @@
 // app/api/chat/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { doc, runTransaction, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from 'firebase/firestore'; // 👈 getDoc, addDoc 추가
 
 const TOKEN_COST = { chat: 2, quiz: 3, synergy: 3, translate: 1 };
 
@@ -13,6 +13,46 @@ export async function POST(req: Request) {
 
     if (!apiKey) return NextResponse.json({ reply: "API 키 설정 오류" }, { status: 500 });
 
+    // ====================================================================
+    // 🔥 [NEW] 1. 이벤트 키워드 당첨 확인 (채팅 모드일 때만 작동)
+    // ====================================================================
+    if (mode === 'chat' && message) {
+        try {
+            const eventSnap = await getDoc(doc(db, "settings", "events"));
+            if (eventSnap.exists()) {
+                const eventData = eventSnap.data();
+                
+                // 마스터가 이벤트를 켜두었고, 사용자 메시지에 키워드가 포함되어 있다면!
+                if (eventData.isActive && eventData.keyword && message.includes(eventData.keyword)) {
+                    
+                    // min ~ max 사이의 랜덤 토큰 당첨금 계산
+                    const amount = Math.floor(Math.random() * (eventData.maxToken - eventData.minToken + 1)) + eventData.minToken;
+                    
+                    // DB(event_claims)에 승인 대기 상태로 저장
+                    await addDoc(collection(db, "event_claims"), {
+                        userId: username, // 명함 주인의 ID
+                        userName: context.name || '알 수 없음',
+                        keyword: eventData.keyword,
+                        amount: amount,
+                        status: 'pending',
+                        claimedAt: serverTimestamp()
+                    });
+
+                    // AI API를 호출하지 않고(토큰 차감 안 함) 즉시 당첨 메시지 반환
+                    return NextResponse.json({ 
+                        reply: `🎉 [이벤트 당첨]\n${eventData.prizeMsg}\n\n🎁 예상 당첨금: ${amount} 토큰\n(최고 관리자 승인 후 최종 지급됩니다!)` 
+                    });
+                }
+            }
+        } catch (eventError) {
+            console.error("이벤트 처리 중 오류:", eventError);
+            // 이벤트 로직에서 에러가 나더라도 일반 채팅은 정상 진행되도록 무시
+        }
+    }
+
+    // ====================================================================
+    // 2. 일반 토큰 차감 로직 (이벤트 당첨이 아닐 경우 정상 진행)
+    // ====================================================================
     if (username) {
       try {
         const cost = TOKEN_COST[mode as keyof typeof TOKEN_COST] || 2;
@@ -21,7 +61,9 @@ export async function POST(req: Request) {
           const userDoc = await transaction.get(userRef);
           if (!userDoc.exists()) throw new Error("User not found");
           const currentCredits = userDoc.data().credits || 0;
+          
           if (currentCredits < cost) throw new Error(`토큰이 부족합니다.`);
+          
           transaction.update(userRef, { credits: currentCredits - cost });
           const newLogRef = doc(collection(db, "users", username, "logs"));
           transaction.set(newLogRef, { type: '사용', amount: -cost, reason: `AI 기능 사용 (${mode})`, date: serverTimestamp() });
@@ -31,6 +73,9 @@ export async function POST(req: Request) {
       }
     }
 
+    // ====================================================================
+    // 3. 시스템 프롬프트 구성 및 AI 답변 생성
+    // ====================================================================
     const metaInstruction = `[최상위 절대 규칙] 제작 문의는 ot.helper7@gmail.com 으로 연락 부탁드립니다.`;
     const customKnowledge = context.custom_knowledge?.length > 0 ? `[추가 학습 정보]:\n${context.custom_knowledge.join('\n')}` : "";
     const customInstruction = context.ai_prompt ? `[특별 지시사항]: ${context.ai_prompt}` : `너는 **'${context.name}'**님의 AI 비서야. 직업은 **'${context.role}'**이야.`;
@@ -50,21 +95,18 @@ export async function POST(req: Request) {
       `;
       userPrompt = "찐친 고사 JSON 생성";
     } 
-    // 🔥 [수정] 궁합 분석 (MBTI)
     else if (mode === 'synergy') {
       const ownerMbti = context.ownerMbti;
       const visitorMbti = visitorData.mbti;
       const visitorName = visitorData.name;
 
       if (ownerMbti) {
-          // 1. 주인의 MBTI가 있을 때 -> 궁합 분석
           systemPrompt += `
           명함 주인(${context.name}, MBTI: ${ownerMbti})과 방문자(${visitorName}, MBTI: ${visitorMbti})의 MBTI 궁합을 분석해.
           [규칙] 마크다운 없이 순수 JSON만 출력해.
           [형식] { "score": 점수(숫자), "title": "한줄평", "reason": "상세 이유 (친절하고 재미있게)" }
           `;
       } else {
-          // 2. 주인의 MBTI가 없을 때 -> 방문자 성향 분석
           systemPrompt += `
           방문자(${visitorName}, MBTI: ${visitorMbti})의 성향을 분석해줘. (주인의 MBTI 정보가 없으므로 궁합 대신 성향 분석을 제공)
           [규칙] 마크다운 없이 순수 JSON만 출력해.
@@ -82,6 +124,7 @@ export async function POST(req: Request) {
       userPrompt = message;
     }
 
+    // Gemini API 호출
     const isJsonMode = (mode === 'quiz' || mode === 'synergy' || mode === 'translate');
     
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
