@@ -30,14 +30,9 @@ export default function AdminPage() {
   const [myCardId, setMyCardId] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   
-  // 🔥 [수정] ownerMbti 필드 추가
   const [formData, setFormData] = useState<any>({ 
     links: [], history: [], projects: [], custom_sections: [], custom_knowledge: [],
-    chatbotEnabled: true, 
-    translationEnabled: true, 
-    quizEnabled: true,    
-    synergyEnabled: true,
-    ownerMbti: '' // 명함 주인 MBTI
+    chatbotEnabled: true, translationEnabled: true, quizEnabled: true, synergyEnabled: true, ownerMbti: ''
   });
   
   const [newKnowledge, setNewKnowledge] = useState('');
@@ -85,7 +80,7 @@ export default function AdminPage() {
                     translationEnabled: data.translationEnabled !== false,
                     quizEnabled: data.quizEnabled !== false,
                     synergyEnabled: data.synergyEnabled !== false,
-                    ownerMbti: data.ownerMbti || '' // MBTI 불러오기
+                    ownerMbti: data.ownerMbti || ''
                 }));
 
                 if(data.colors) setColors(data.colors);
@@ -211,17 +206,51 @@ export default function AdminPage() {
         alert("✅ 저장되었습니다.");
     } catch (error) { console.error(error); alert("저장 실패"); }
   };
+
   const handleSort = () => { if (dragItem.current === null || dragOverItem.current === null) return; const _list = [...sectionList]; const draggedItem = _list.splice(dragItem.current, 1)[0]; _list.splice(dragOverItem.current, 0, draggedItem); dragItem.current = null; dragOverItem.current = null; setSectionList(_list); };
   const updateSectionState = (index: number | 'profile', field: keyof SectionItem, value: any) => { if (index === 'profile') setProfileConfig({ ...profileConfig, [field]: value }); else { const newList = [...sectionList]; (newList[index] as any)[field] = value; setSectionList(newList); } };
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file || !myCardId) return; setUploading(true); try { const storageRef = ref(storage, `profile_images/${myCardId}_${Date.now()}`); await uploadBytes(storageRef, file); const url = await getDownloadURL(storageRef); setFormData({ ...formData, profile_img: url }); } finally { setUploading(false); } };
+  
+  // ============================================================
+  // 🔥 [신규] 섹션 내부 항목 순서 이동 및 관리 로직
+  // ============================================================
   const handleItemChange = (key: string, idx: number, field: string, val: string) => { const list = [...formData[key]]; list[idx][field] = val; setFormData({...formData, [key]: list}); };
   const addItem = (key: string) => { const emptyItem = key==='links'?{type:'mobile', value:''} : key==='history'?{date:'', title:'', desc:''} : {title:'', link:'', desc:''}; setFormData({...formData, [key]: [...formData[key], emptyItem]}); };
   const removeItem = (key: string, idx: number) => { const list = [...formData[key]]; list.splice(idx, 1); setFormData({...formData, [key]: list}); };
+  
+  // 일반 항목 위아래 이동
+  const moveItem = (key: string, idx: number, direction: 'up' | 'down') => {
+      const list = [...formData[key]];
+      if (direction === 'up' && idx > 0) {
+          [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+      } else if (direction === 'down' && idx < list.length - 1) {
+          [list[idx + 1], list[idx]] = [list[idx], list[idx + 1]];
+      } else { return; }
+      setFormData({...formData, [key]: list});
+  };
+
   const addCustomSection = () => { const newId = `custom_${Date.now()}`; setFormData({ ...formData, custom_sections: [...(formData.custom_sections||[]), { id: newId, title: '새 섹션', items: [] }] }); setSectionList([ ...sectionList, { id: newId, type: 'custom', title: '새 섹션', isDefaultOpen: true, isOpenInAdmin: true } ]); };
   const deleteSection = (index: number) => { if(!confirm("영구 삭제하시겠습니까?")) return; const targetId = sectionList[index].id; setSectionList(sectionList.filter((_, i) => i !== index)); if(targetId.startsWith('custom')) setFormData({ ...formData, custom_sections: formData.custom_sections.filter((c:any) => c.id !== targetId) }); };
   const handleCustomItemChange = (secId: string, itemIdx: number, field: string, val: string) => { const updated = formData.custom_sections.map((c:any) => c.id === secId ? { ...c, items: c.items.map((it:any, i:number)=>i===itemIdx ? {...it, [field]:val} : it) } : c); setFormData({...formData, custom_sections: updated}); };
   const addCustomItem = (secId: string) => { const updated = formData.custom_sections.map((c:any) => c.id===secId ? {...c, items: [...c.items, {title:'', desc:''}]} : c); setFormData({...formData, custom_sections: updated}); };
   const removeCustomItem = (secId: string, itemIdx: number) => { const updated = formData.custom_sections.map((c:any) => c.id===secId ? {...c, items: c.items.filter((_:any, i:number)=>i!==itemIdx)} : c); setFormData({...formData, custom_sections: updated}); };
+  
+  // 커스텀 섹션 항목 위아래 이동
+  const moveCustomItem = (secId: string, itemIdx: number, direction: 'up' | 'down') => {
+      const updated = formData.custom_sections.map((c:any) => {
+          if (c.id === secId) {
+              const newItems = [...c.items];
+              if (direction === 'up' && itemIdx > 0) {
+                  [newItems[itemIdx - 1], newItems[itemIdx]] = [newItems[itemIdx], newItems[itemIdx - 1]];
+              } else if (direction === 'down' && itemIdx < newItems.length - 1) {
+                  [newItems[itemIdx + 1], newItems[itemIdx]] = [newItems[itemIdx], newItems[itemIdx + 1]];
+              }
+              return { ...c, items: newItems };
+          }
+          return c;
+      });
+      setFormData({...formData, custom_sections: updated});
+  };
 
   if (loading) return <div>로딩 중...</div>;
   if (!user) return <div style={centerStyle}><h2 style={{marginBottom:'15px'}}>관리자 로그인</h2><p style={{marginBottom:'25px', color:'#666'}}>명함을 수정하려면 로그인이 필요합니다.</p><button onClick={()=>signInWithPopup(auth, new GoogleAuthProvider())} style={googleLoginBtnStyle}><span style={{marginRight:'10px'}}>G</span> 구글 계정으로 로그인</button></div>;
@@ -241,34 +270,22 @@ export default function AdminPage() {
         {/* AI 기능 제어 & MBTI 입력 */}
         <div style={{background:'white', padding:'15px', borderRadius:'10px', marginBottom:'20px', border:'1px solid #e0e0e0', boxShadow:'0 2px 5px rgba(0,0,0,0.05)'}}>
             <h3 style={{marginTop:0, fontSize:'0.9rem', color:'#333', marginBottom:'10px'}}>🤖 AI 기능 제어 (ON/OFF)</h3>
-            
             <div style={{display:'flex', gap:'15px', flexWrap:'wrap', marginBottom: '15px'}}>
                 <label style={toggleLabelStyle}><input type="checkbox" checked={formData.chatbotEnabled} onChange={(e)=>setFormData({...formData, chatbotEnabled: e.target.checked})} /> 💬 챗봇</label>
                 <label style={toggleLabelStyle}><input type="checkbox" checked={formData.translationEnabled} onChange={(e)=>setFormData({...formData, translationEnabled: e.target.checked})} /> 🌐 번역</label>
                 <label style={toggleLabelStyle}><input type="checkbox" checked={formData.quizEnabled} onChange={(e)=>setFormData({...formData, quizEnabled: e.target.checked})} /> 🧠 찐친고사</label>
                 <label style={toggleLabelStyle}><input type="checkbox" checked={formData.synergyEnabled} onChange={(e)=>setFormData({...formData, synergyEnabled: e.target.checked})} /> 💘 MBTI 분석</label>
             </div>
-
-            {/* 🔥 [신규] MBTI 입력창: synergyEnabled가 켜져 있을 때만 보임 */}
             {formData.synergyEnabled && (
                 <div style={{background:'#f3e5f5', padding:'10px', borderRadius:'5px', border:'1px solid #e1bee7', marginTop:'5px'}}>
-                    <label style={{fontSize:'0.85rem', fontWeight:'bold', color:'#7b1fa2', display:'block', marginBottom:'5px'}}>
-                        🧙‍♂️ 주인의 MBTI (AI 궁합 분석용)
-                    </label>
-                    <input 
-                        type="text" 
-                        placeholder="예: ENFP (비워두면 방문자 성향만 분석해줌)" 
-                        value={formData.ownerMbti || ''}
-                        onChange={(e)=>setFormData({...formData, ownerMbti: e.target.value.toUpperCase()})}
-                        style={{width:'100%', padding:'8px', border:'1px solid #ce93d8', borderRadius:'5px', boxSizing:'border-box'}}
-                    />
+                    <label style={{fontSize:'0.85rem', fontWeight:'bold', color:'#7b1fa2', display:'block', marginBottom:'5px'}}>🧙‍♂️ 주인의 MBTI (AI 궁합 분석용)</label>
+                    <input type="text" placeholder="예: ENFP (비워두면 방문자 성향만 분석해줌)" value={formData.ownerMbti || ''} onChange={(e)=>setFormData({...formData, ownerMbti: e.target.value.toUpperCase()})} style={{width:'100%', padding:'8px', border:'1px solid #ce93d8', borderRadius:'5px', boxSizing:'border-box'}} />
                     <p style={{fontSize:'0.75rem', color:'#666', margin:'5px 0 0'}}>* 입력하지 않으면 방문자의 MBTI 성향만 분석해줍니다.</p>
                 </div>
             )}
         </div>
 
-        {/* ... (이하 스타일, 교육, 섹션, 버튼 등 기존 UI와 동일) ... */}
-        {/* 기존 코드 유지 (내용 생략 없이 그대로 붙여넣기 하세요) */}
+        {/* 테마/색상 설정 */}
         <div style={{background:'#e3f2fd', padding:'15px', borderRadius:'10px', marginBottom:'20px', border:'1px solid #90caf9'}}>
             <h3 style={{marginTop:0, fontSize:'1rem', color:'#1565c0'}}>🎨 테마/색상 설정</h3>
             <div style={{display:'flex', gap:'20px', marginTop:'10px'}}>
@@ -277,6 +294,7 @@ export default function AdminPage() {
             </div>
         </div>
 
+        {/* AI 교육 관리 */}
         <div style={{background:'#fff3e0', padding:'15px', borderRadius:'10px', marginBottom:'20px', border:'1px solid #ffcc80'}}>
             <h3 style={{marginTop:0, fontSize:'1rem', color:'#e65100'}}>🤖 AI 챗봇 교육 (추가/삭제: 각 10토큰)</h3>
             <p style={{fontSize:'0.85rem', color:'#666', marginBottom:'10px'}}>AI에게 알려주고 싶은 내용을 입력하세요.</p>
@@ -298,6 +316,7 @@ export default function AdminPage() {
             </div>
         </div>
 
+        {/* 섹션 관리 (프로필) */}
         <div style={{border:'2px solid #1a237e', borderRadius:'10px', overflow:'hidden', marginBottom:'20px', background:'white'}}>
             <div style={{padding:'15px', background:'#f0f2f5', borderBottom:'1px solid #ddd', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                 <div style={{display:'flex', gap:'10px', alignItems:'center', flex:1}}><span style={{fontSize:'1.2rem'}}>📌</span><input value={profileConfig.title} onChange={(e)=>updateSectionState('profile', 'title', e.target.value)} style={titleInputStyle} /></div>
@@ -306,8 +325,9 @@ export default function AdminPage() {
             {profileConfig.isOpenInAdmin && (<div style={{padding:'20px', textAlign:'center'}}><img src={formData.profile_img || "/profile_default.jpg"} style={{width:'80px', height:'80px', borderRadius:'50%'}} /><br/><label style={{cursor:'pointer', color:'blue', fontSize:'0.9rem'}}>{uploading ? "업로드 중" : "사진 변경"}<input type="file" hidden onChange={handleImageUpload}/></label><input value={formData.name || ''} onChange={e=>setFormData({...formData, name:e.target.value})} placeholder="이름" style={inputStyle}/><input value={formData.role || ''} onChange={e=>setFormData({...formData, role:e.target.value})} placeholder="직함" style={inputStyle}/><textarea value={formData.intro || ''} onChange={e=>setFormData({...formData, intro:e.target.value})} placeholder="소개" style={{...inputStyle, height:'80px'}}/></div>)}
         </div>
 
-        <p style={{fontSize:'0.9rem', color:'#666', marginBottom:'10px'}}>⬇️ 드래그하여 순서 변경 가능</p>
+        <p style={{fontSize:'0.9rem', color:'#666', marginBottom:'10px'}}>⬇️ 드래그하여 섹션 순서 변경 가능</p>
 
+        {/* 🔥 섹션 관리 (리스트) - 내부 항목 이동 버튼 추가 */}
         <div style={{display:'flex', flexDirection:'column', gap:'15px'}}>
             {sectionList.map((section, index) => (
                 <div key={section.id} draggable onDragStart={() => dragItem.current = index} onDragEnter={() => dragOverItem.current = index} onDragEnd={handleSort} onDragOver={(e)=>e.preventDefault()} style={{background:'white', border: '1px solid #ccc', borderRadius:'10px', overflow:'hidden'}}>
@@ -315,12 +335,85 @@ export default function AdminPage() {
                         <div style={{display:'flex', gap:'10px', alignItems:'center', flex:1}}><span style={{color:'#999'}}>☰</span><input value={section.title} onChange={(e)=>updateSectionState(index, 'title', e.target.value)} onClick={(e)=>e.stopPropagation()} style={titleInputStyle} /></div>
                         <div style={{display:'flex', gap:'10px', fontSize:'0.8rem', alignItems:'center'}}><label onClick={e=>e.stopPropagation()}><input type="checkbox" checked={section.isDefaultOpen} onChange={(e)=>updateSectionState(index, 'isDefaultOpen', e.target.checked)}/> 초기 펼침</label><button onClick={()=>updateSectionState(index, 'isOpenInAdmin', !section.isOpenInAdmin)}>{section.isOpenInAdmin ? '▲' : '▼'}</button></div>
                     </div>
+                    
                     {section.isOpenInAdmin && (
                         <div style={{padding:'15px', borderTop:'1px solid #eee'}}>
-                             {section.type === 'links' && (<div>{formData.links.map((link:any, i:number) => (<div key={i} style={{display:'flex', gap:'5px', marginBottom:'5px'}}><select value={link.type} onChange={e=>handleItemChange('links', i, 'type', e.target.value)}>{LINK_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select><input value={link.value} onChange={e=>handleItemChange('links', i, 'value', e.target.value)} style={{flex:1}}/><button onClick={()=>removeItem('links', i)}>×</button></div>))}<button onClick={()=>addItem('links')} style={addBtn}>+ 링크 추가</button></div>)}
-                            {section.type === 'history' && (<div>{formData.history.map((item:any, i:number)=>(<div key={i} style={itemBoxStyle}><input value={item.date} onChange={e=>handleItemChange('history', i, 'date', e.target.value)} placeholder="날짜" style={inputStyle}/><input value={item.title} onChange={e=>handleItemChange('history', i, 'title', e.target.value)} placeholder="제목" style={inputStyle}/><textarea value={item.desc} onChange={e=>handleItemChange('history', i, 'desc', e.target.value)} placeholder="내용" style={{...inputStyle, height:'50px'}}/><button onClick={()=>removeItem('history', i)}>삭제</button></div>))}<button onClick={()=>addItem('history')} style={addBtn}>+ 연혁 추가</button></div>)}
-                            {section.type === 'projects' && (<div>{formData.projects.map((item:any, i:number)=>(<div key={i} style={itemBoxStyle}><input value={item.title} onChange={e=>handleItemChange('projects', i, 'title', e.target.value)} placeholder="프로젝트명" style={inputStyle}/><input value={item.link} onChange={e=>handleItemChange('projects', i, 'link', e.target.value)} placeholder="링크" style={inputStyle}/><textarea value={item.desc} onChange={e=>handleItemChange('projects', i, 'desc', e.target.value)} placeholder="설명" style={{...inputStyle, height:'50px'}}/><button onClick={()=>removeItem('projects', i)}>삭제</button></div>))}<button onClick={()=>addItem('projects')} style={addBtn}>+ 프로젝트 추가</button></div>)}
-                            {section.type === 'custom' && (() => { const cData = formData.custom_sections.find((c:any)=>c.id===section.id); if(!cData) return null; return (<div>{cData.items.map((item:any, i:number)=>(<div key={i} style={itemBoxStyle}><input value={item.title} onChange={e=>handleCustomItemChange(cData.id, i, 'title', e.target.value)} placeholder="제목" style={inputStyle}/><textarea value={item.desc} onChange={e=>handleCustomItemChange(cData.id, i, 'desc', e.target.value)} placeholder="내용" style={{...inputStyle, height:'50px'}}/><button onClick={()=>removeCustomItem(cData.id, i)}>삭제</button></div>))}<button onClick={()=>addCustomItem(cData.id)} style={addBtn}>+ 항목 추가</button><button onClick={()=>deleteSection(index)} style={{...addBtn, background:'#ffcdd2', color:'red', marginTop:'10px'}}>섹션 삭제</button></div>) })()}
+                             {/* 1. 링크 */}
+                             {section.type === 'links' && (
+                                <div>
+                                    {formData.links.map((link:any, i:number) => (
+                                        <div key={i} style={{display:'flex', gap:'5px', marginBottom:'5px', alignItems:'center'}}>
+                                            <select value={link.type} onChange={e=>handleItemChange('links', i, 'type', e.target.value)} style={{padding:'5px', borderRadius:'5px', border:'1px solid #ddd'}}>{LINK_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
+                                            <input value={link.value} onChange={e=>handleItemChange('links', i, 'value', e.target.value)} style={{...inputStyle, flex:1, margin:0}}/>
+                                            <button onClick={()=>moveItem('links', i, 'up')} style={arrowBtnStyle}>⬆️</button>
+                                            <button onClick={()=>moveItem('links', i, 'down')} style={arrowBtnStyle}>⬇️</button>
+                                            <button onClick={()=>removeItem('links', i)} style={delBtnStyle}>❌</button>
+                                        </div>
+                                    ))}
+                                    <button onClick={()=>addItem('links')} style={addBtn}>+ 링크 추가</button>
+                                </div>
+                            )}
+
+                            {/* 2. 연혁 */}
+                            {section.type === 'history' && (
+                                <div>
+                                    {formData.history.map((item:any, i:number)=>(
+                                        <div key={i} style={itemBoxStyle}>
+                                            <div style={{display:'flex', gap:'5px', marginBottom:'5px', alignItems:'center'}}>
+                                                <input value={item.date} onChange={e=>handleItemChange('history', i, 'date', e.target.value)} placeholder="날짜" style={{...inputStyle, flex:1, margin:0}}/>
+                                                <button onClick={()=>moveItem('history', i, 'up')} style={arrowBtnStyle}>⬆️</button>
+                                                <button onClick={()=>moveItem('history', i, 'down')} style={arrowBtnStyle}>⬇️</button>
+                                                <button onClick={()=>removeItem('history', i)} style={delBtnStyle}>❌</button>
+                                            </div>
+                                            <input value={item.title} onChange={e=>handleItemChange('history', i, 'title', e.target.value)} placeholder="제목" style={inputStyle}/>
+                                            <textarea value={item.desc} onChange={e=>handleItemChange('history', i, 'desc', e.target.value)} placeholder="내용" style={{...inputStyle, height:'50px', marginBottom:0}}/>
+                                        </div>
+                                    ))}
+                                    <button onClick={()=>addItem('history')} style={addBtn}>+ 연혁 추가</button>
+                                </div>
+                            )}
+
+                            {/* 3. 프로젝트 */}
+                            {section.type === 'projects' && (
+                                <div>
+                                    {formData.projects.map((item:any, i:number)=>(
+                                        <div key={i} style={itemBoxStyle}>
+                                            <div style={{display:'flex', gap:'5px', marginBottom:'5px', alignItems:'center'}}>
+                                                <input value={item.title} onChange={e=>handleItemChange('projects', i, 'title', e.target.value)} placeholder="프로젝트명" style={{...inputStyle, flex:1, margin:0}}/>
+                                                <button onClick={()=>moveItem('projects', i, 'up')} style={arrowBtnStyle}>⬆️</button>
+                                                <button onClick={()=>moveItem('projects', i, 'down')} style={arrowBtnStyle}>⬇️</button>
+                                                <button onClick={()=>removeItem('projects', i)} style={delBtnStyle}>❌</button>
+                                            </div>
+                                            <input value={item.link} onChange={e=>handleItemChange('projects', i, 'link', e.target.value)} placeholder="링크 URL" style={inputStyle}/>
+                                            <textarea value={item.desc} onChange={e=>handleItemChange('projects', i, 'desc', e.target.value)} placeholder="설명" style={{...inputStyle, height:'50px', marginBottom:0}}/>
+                                        </div>
+                                    ))}
+                                    <button onClick={()=>addItem('projects')} style={addBtn}>+ 프로젝트 추가</button>
+                                </div>
+                            )}
+
+                            {/* 4. 커스텀 섹션 */}
+                            {section.type === 'custom' && (() => { 
+                                const cData = formData.custom_sections.find((c:any)=>c.id===section.id); 
+                                if(!cData) return null; 
+                                return (
+                                    <div>
+                                        {cData.items.map((item:any, i:number)=>(
+                                            <div key={i} style={itemBoxStyle}>
+                                                <div style={{display:'flex', gap:'5px', marginBottom:'5px', alignItems:'center'}}>
+                                                    <input value={item.title} onChange={e=>handleCustomItemChange(cData.id, i, 'title', e.target.value)} placeholder="소제목" style={{...inputStyle, flex:1, margin:0}}/>
+                                                    <button onClick={()=>moveCustomItem(cData.id, i, 'up')} style={arrowBtnStyle}>⬆️</button>
+                                                    <button onClick={()=>moveCustomItem(cData.id, i, 'down')} style={arrowBtnStyle}>⬇️</button>
+                                                    <button onClick={()=>removeCustomItem(cData.id, i)} style={delBtnStyle}>❌</button>
+                                                </div>
+                                                <textarea value={item.desc} onChange={e=>handleCustomItemChange(cData.id, i, 'desc', e.target.value)} placeholder="내용" style={{...inputStyle, height:'50px', marginBottom:0}}/>
+                                            </div>
+                                        ))}
+                                        <button onClick={()=>addCustomItem(cData.id)} style={addBtn}>+ 항목 추가</button>
+                                        <button onClick={()=>deleteSection(index)} style={{...addBtn, background:'#ffcdd2', color:'red', marginTop:'10px'}}>이 섹션 통째로 삭제</button>
+                                    </div>
+                                ) 
+                            })()}
                         </div>
                     )}
                 </div>
@@ -335,6 +428,7 @@ export default function AdminPage() {
             <button onClick={handleSave} style={{...saveBtn, background:'#1a237e'}}>저장하기</button>
         </div>
 
+        {/* 토큰 모달 */}
         {showTokenHistory && (
             <div style={modalOverlay}>
                 <div style={modalContent}>
@@ -358,7 +452,7 @@ export default function AdminPage() {
   );
 }
 
-// 스타일
+// 기존 스타일
 const centerStyle = {display:'flex', flexDirection:'column' as 'column', alignItems:'center', justifyContent:'center', height:'100vh', padding:'20px', textAlign:'center' as 'center'};
 const inputStyle = {width:'100%', padding:'10px', marginBottom:'5px', border:'1px solid #ddd', borderRadius:'5px', boxSizing:'border-box' as 'border-box'};
 const titleInputStyle = {fontWeight:'bold' as 'bold', fontSize:'1rem', border:'none', background:'transparent', borderBottom:'1px dashed #999', width:'70%'};
@@ -372,3 +466,7 @@ const modalOverlay = {position:'fixed' as 'fixed', top:0, left:0, width:'100%', 
 const modalContent = {background:'white', padding:'20px', borderRadius:'10px', width:'300px'};
 const closeBtn = {width:'100%', padding:'10px', background:'#333', color:'white', border:'none', borderRadius:'5px', marginTop:'10px', cursor:'pointer'};
 const toggleLabelStyle = {display:'flex', alignItems:'center', gap:'5px', cursor:'pointer', fontWeight:'bold' as 'bold', fontSize:'0.9rem', padding:'5px 10px', borderRadius:'5px', background:'#f5f5f5'};
+
+// 🔥 [신규 스타일] 항목 이동/삭제 버튼
+const arrowBtnStyle = { padding: '8px', background: 'white', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '0.8rem', display:'flex', alignItems:'center', justifyContent:'center' };
+const delBtnStyle = { padding: '8px 10px', background: '#ffcdd2', color: '#c62828', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' as 'bold', display:'flex', alignItems:'center', justifyContent:'center' };
