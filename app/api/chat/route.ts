@@ -1,7 +1,7 @@
 // app/api/chat/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from 'firebase/firestore'; // 👈 getDoc, addDoc 추가
+import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 
 const TOKEN_COST = { chat: 2, quiz: 3, synergy: 3, translate: 1 };
 
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     if (!apiKey) return NextResponse.json({ reply: "API 키 설정 오류" }, { status: 500 });
 
     // ====================================================================
-    // 🔥 [NEW] 1. 이벤트 키워드 당첨 확인 (채팅 모드일 때만 작동)
+    // 🔥 1. 이벤트 키워드 당첨 확인 (채팅 모드일 때만 작동)
     // ====================================================================
     if (mode === 'chat' && message) {
         try {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
                     // min ~ max 사이의 랜덤 토큰 당첨금 계산
                     const amount = Math.floor(Math.random() * (eventData.maxToken - eventData.minToken + 1)) + eventData.minToken;
                     
-                    // DB(event_claims)에 승인 대기 상태로 저장
+                    // DB(event_claims)에 승인 대기 상태로 저장 (충전 요청)
                     await addDoc(collection(db, "event_claims"), {
                         userId: username, // 명함 주인의 ID
                         userName: context.name || '알 수 없음',
@@ -38,15 +38,14 @@ export async function POST(req: Request) {
                         claimedAt: serverTimestamp()
                     });
 
-                    // AI API를 호출하지 않고(토큰 차감 안 함) 즉시 당첨 메시지 반환
+                    // AI API를 호출하지 않고 즉시 당첨 메시지 반환
                     return NextResponse.json({ 
-                        reply: `🎉 [이벤트 당첨]\n${eventData.prizeMsg}\n\n🎁 예상 당첨금: ${amount} 토큰\n(최고 관리자 승인 후 최종 지급됩니다!)` 
+                        reply: `🎉 [이벤트 당첨]\n${eventData.prizeMsg}\n\n🎁 당첨금: ${amount} 토큰\n(관리자 승인 후 즉시 지급됩니다!)` 
                     });
                 }
             }
         } catch (eventError) {
             console.error("이벤트 처리 중 오류:", eventError);
-            // 이벤트 로직에서 에러가 나더라도 일반 채팅은 정상 진행되도록 무시
         }
     }
 
@@ -76,7 +75,12 @@ export async function POST(req: Request) {
     // ====================================================================
     // 3. 시스템 프롬프트 구성 및 AI 답변 생성
     // ====================================================================
-    const metaInstruction = `[최상위 절대 규칙] 제작 문의는 ot.helper7@gmail.com 으로 연락 부탁드립니다.`;
+    const metaInstruction = `
+    [최상위 절대 규칙] 
+    1. 이 서비스의 제작 문의, 결제, 요금 등에 대해 질문하면 "제작 문의는 ot.helper7@gmail.com 으로 연락 부탁드립니다."라고만 답변해.
+    2. 답변 내용에 **강조표시**나 *기울임* 같은 마크다운(Markdown) 기호를 절대 사용하지 말고, 오직 깔끔한 순수 텍스트(Plain text)로만 자연스럽게 답변해.
+    `;
+    
     const customKnowledge = context.custom_knowledge?.length > 0 ? `[추가 학습 정보]:\n${context.custom_knowledge.join('\n')}` : "";
     const customInstruction = context.ai_prompt ? `[특별 지시사항]: ${context.ai_prompt}` : `너는 **'${context.name}'**님의 AI 비서야. 직업은 **'${context.role}'**이야.`;
 
