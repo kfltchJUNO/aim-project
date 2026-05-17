@@ -27,8 +27,7 @@ export default function Guestbook({ username, themeColor = '#1a237e', isDark = f
   useEffect(() => {
     const q = query(
       collection(db, 'guestbooks'),
-      where('to_user', '==', username),
-      orderBy('createdAt', 'desc')
+      where('to_user', '==', username)
     );
     const unsubscribe = onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
