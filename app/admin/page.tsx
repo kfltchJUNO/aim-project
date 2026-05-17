@@ -50,7 +50,7 @@ export default function AdminPage() {
 
   const [newKnowledge, setNewKnowledge] = useState('');
   const [colors,       setColors]       = useState({ background: '#ffffff', theme: '#1a237e' });
-  const [themePreset,  setThemePreset]  = useState('navy');
+  const [themePreset,  setThemePreset]  = useState<string | null>(null);
   const [sectionList,  setSectionList]  = useState<SectionItem[]>([]);
   const [profileConfig, setProfileConfig] = useState<SectionItem>({
     id: 'profile', type: 'profile', title: '기본 정보', isDefaultOpen: true, isOpenInAdmin: true,
@@ -251,7 +251,7 @@ export default function AdminPage() {
       });
 
       // 테마 프리셋 처리
-      const colorsToSave = themePreset !== 'custom'
+      const colorsToSave = themePreset && themePreset !== 'custom'
         ? THEME_PRESETS.find(t => t.value === themePreset)
           ? { background: THEME_PRESETS.find(t => t.value === themePreset)!.bg, theme: THEME_PRESETS.find(t => t.value === themePreset)!.theme }
           : colors
@@ -263,7 +263,7 @@ export default function AdminPage() {
         section_order:   orderToSave,
         section_config:  configMap,
         colors:          colorsToSave,
-        theme_preset:    themePreset,
+        ...(themePreset ? { theme_preset: themePreset } : {}),
         ai_prompt:       formData.ai_prompt || '',
       });
       alert('✅ 저장되었습니다.');
@@ -292,7 +292,7 @@ export default function AdminPage() {
       const storageRef = ref(storage, `profile_images/${myCardId}_${Date.now()}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
-      setFormData({ ...formData, profile_img: url });
+      setFormData((prev: any) => ({ ...prev, profile_img: url }));
     } finally { setUploading(false); }
   };
 
