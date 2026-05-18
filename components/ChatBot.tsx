@@ -2,6 +2,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import { db } from '@/lib/firebase';
+import { getDoc, doc } from 'firebase/firestore';
 
 type Props = {
   context: any;
@@ -10,17 +12,28 @@ type Props = {
 };
 
 export default function ChatBot({ context, username, themeColor = '#1a237e' }: Props) {
-  const [isOpen, setIsOpen]   = useState(false);
-  const [input, setInput]     = useState('');
+  const [isOpen, setIsOpen]     = useState(false);
+  const [input, setInput]       = useState('');
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ownerName = context?.name || '명함 주인';
 
   useEffect(() => {
     if (context && messages.length === 0) {
-      setMessages([{ role: 'bot', text: `안녕하세요! ${ownerName}님의 AI 비서입니다. 무엇이든 물어봐 주세요. 😄` }]);
+      const initMessages = async () => {
+        const msgs: { role: string; text: string }[] = [];
+        try {
+          const noticeSnap = await getDoc(doc(db, 'settings', 'notice'));
+          if (noticeSnap.exists() && noticeSnap.data().isActive && noticeSnap.data().text) {
+            msgs.push({ role: 'bot', text: `📢 ${noticeSnap.data().text}` });
+          }
+        } catch (_) {}
+        msgs.push({ role: 'bot', text: `안녕하세요! ${ownerName}님의 AI 비서입니다. 무엇이든 물어봐 주세요. 😄` });
+        setMessages(msgs);
+      };
+      initMessages();
     }
   }, [context, ownerName, messages.length]);
 
