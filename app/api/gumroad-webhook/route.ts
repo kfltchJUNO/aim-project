@@ -7,10 +7,10 @@ import { doc, runTransaction, collection, serverTimestamp } from 'firebase/fires
 // Gumroad 대시보드에서 상품 생성 후, 주소창의 짧은 코드(permalink)를 여기에 채워주세요.
 // 예: https://gumroad.com/l/abcde → permalink는 'abcde'
 const PRODUCT_TOKEN_MAP: Record<string, number> = {
-  'REPLACE_WITH_PERMALINK_A':    1000,  // 15,000원
-  'REPLACE_WITH_PERMALINK_B':    3000,  // 25,000원
-  'REPLACE_WITH_PERMALINK_C':    5000,  // 35,000원
-  'REPLACE_WITH_PERMALINK_MEGA': 10000, // 60,000원
+  'aim1000':  1000,  // $10
+  'aim3000':  3000,  // $17
+  'aim5000':  5000,  // $24
+  'aim10000': 10000, // $40
 };
 
 // Gumroad 커스텀 필드에 입력받은 "명함 ID"가 webhook payload에서 어떤 키로 오는지는

@@ -404,10 +404,10 @@ export default function AdminPage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
-              { label: 'A · 1,000토큰 (15,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_A' },
-              { label: 'B · 3,000토큰 (25,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_B' },
-              { label: 'C · 5,000토큰 (35,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_C' },
-              { label: '메가 · 10,000토큰 (60,000원)', url: 'https://REPLACE_WITH_GUMROAD_URL_MEGA' },
+              { label: 'A · 1,000토큰 ($10)',  url: 'https://maedeup.gumroad.com/l/aim1000' },
+              { label: 'B · 3,000토큰 ($17)',  url: 'https://maedeup.gumroad.com/l/aim3000' },
+              { label: 'C · 5,000토큰 ($24)',  url: 'https://maedeup.gumroad.com/l/aim5000' },
+              { label: '메가 · 10,000토큰 ($40)', url: 'https://maedeup.gumroad.com/l/aim10000' },
             ].map(tier => (
               <a
                 key={tier.label}
