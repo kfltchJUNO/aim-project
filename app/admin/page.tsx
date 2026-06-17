@@ -49,6 +49,7 @@ export default function AdminPage() {
   });
 
   const [newKnowledge, setNewKnowledge] = useState('');
+  const [editingKnowledge, setEditingKnowledge] = useState<{ original: string; draft: string } | null>(null);
   const [colors,       setColors]       = useState({ background: '#ffffff', theme: '#1a237e' });
   const [themePreset,  setThemePreset]  = useState<string | null>(null);
   const [sectionList,  setSectionList]  = useState<SectionItem[]>([]);
@@ -196,41 +197,75 @@ export default function AdminPage() {
     } catch (_) { setTokenLogs([]); setShowTokenHistory(true); }
   };
 
-  // ── AI 교육 추가/삭제 ──────────────────────────────────────────────────────
+  // ── AI 교육 추가/수정/삭제 ──────────────────────────────────────────────────
   const handleAddKnowledge = async () => {
     if (!myCardId || !newKnowledge.trim()) return;
-    if (credits < 10) return alert('토큰이 부족합니다. (교육 추가: 10토큰)');
-    if (!confirm('이 내용을 AI에게 학습시키겠습니까?\n(10토큰이 차감됩니다)')) return;
+    const isFree = !formData.freeKnowledgeUsed;
+    const cost = isFree ? 0 : 10;
+    if (!isFree && credits < cost) return alert('토큰이 부족합니다. (교육 추가: 10토큰)');
+    if (!confirm(isFree
+      ? '이 내용을 AI에게 학습시키겠습니까?\n(최초 1회 무료 교육입니다)'
+      : '이 내용을 AI에게 학습시키겠습니까?\n(10토큰이 차감됩니다)'
+    )) return;
     try {
       await runTransaction(db, async transaction => {
         const userRef = doc(db, 'users', myCardId);
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) throw 'User not found';
         const current = userDoc.data().credits || 0;
-        if (current < 10) throw 'Not enough credits';
-        transaction.update(userRef, { credits: current - 10, custom_knowledge: arrayUnion(newKnowledge.trim()) });
+        if (!isFree && current < cost) throw 'Not enough credits';
+        transaction.update(userRef, {
+          credits: current - cost,
+          custom_knowledge: arrayUnion(newKnowledge.trim()),
+          freeKnowledgeUsed: true, // 평생 1회만 무료 — 목록이 0개가 되어도 다시 무료로 돌아가지 않음
+        });
         const logRef = doc(collection(db, 'users', myCardId, 'logs'));
-        transaction.set(logRef, { type: '사용', amount: -10, reason: 'AI 교육 추가', date: new Date() });
+        transaction.set(logRef, { type: isFree ? '무료' : '사용', amount: -cost, reason: isFree ? 'AI 교육 추가 (최초 무료)' : 'AI 교육 추가', date: new Date() });
       });
       setNewKnowledge('');
+      setFormData((prev: any) => ({ ...prev, freeKnowledgeUsed: true }));
       alert('✅ AI 교육이 완료되었습니다.');
+    } catch (_) { alert('오류 발생'); }
+  };
+
+  const handleEditKnowledge = async (oldText: string, newText: string) => {
+    if (!myCardId || !newText.trim() || newText.trim() === oldText) return;
+    if (credits < 30) return alert('토큰이 부족합니다. (수정 비용: 30토큰)');
+    if (!confirm('이 내용으로 수정하시겠습니까?\n(30토큰이 차감됩니다)')) return;
+    try {
+      await runTransaction(db, async transaction => {
+        const userRef = doc(db, 'users', myCardId);
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw 'User not found';
+        const current = userDoc.data().credits || 0;
+        if (current < 30) throw 'Not enough credits';
+        transaction.update(userRef, {
+          credits: current - 30,
+          custom_knowledge: arrayRemove(oldText),
+        });
+        const logRef = doc(collection(db, 'users', myCardId, 'logs'));
+        transaction.set(logRef, { type: '사용', amount: -30, reason: 'AI 교육 수정', date: new Date() });
+      });
+      // arrayRemove와 arrayUnion은 한 트랜잭션에서 동일 필드에 같이 못 묶이므로 분리 처리
+      await updateDoc(doc(db, 'users', myCardId), { custom_knowledge: arrayUnion(newText.trim()) });
+      alert('✏️ 수정되었습니다.');
     } catch (_) { alert('오류 발생'); }
   };
 
   const handleDeleteKnowledge = async (text: string) => {
     if (!myCardId) return;
-    if (credits < 10) return alert('토큰이 부족합니다. (삭제 비용: 10토큰)');
-    if (!confirm('삭제하시겠습니까?\n(10토큰이 소모됩니다)')) return;
+    if (credits < 30) return alert('토큰이 부족합니다. (삭제 비용: 30토큰)');
+    if (!confirm('삭제하시겠습니까?\n(30토큰이 차감됩니다)')) return;
     try {
       await runTransaction(db, async transaction => {
         const userRef = doc(db, 'users', myCardId);
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) throw 'User not found';
         const current = userDoc.data().credits || 0;
-        if (current < 10) throw 'Not enough credits';
-        transaction.update(userRef, { credits: current - 10, custom_knowledge: arrayRemove(text) });
+        if (current < 30) throw 'Not enough credits';
+        transaction.update(userRef, { credits: current - 30, custom_knowledge: arrayRemove(text) });
         const logRef = doc(collection(db, 'users', myCardId, 'logs'));
-        transaction.set(logRef, { type: '사용', amount: -10, reason: 'AI 교육 삭제', date: new Date() });
+        transaction.set(logRef, { type: '사용', amount: -30, reason: 'AI 교육 삭제', date: new Date() });
       });
       alert('🗑️ 삭제되었습니다.');
     } catch (_) { alert('오류 발생'); }
@@ -361,18 +396,30 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* ── 토큰 충전 문의 배너 ── */}
-        <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '14px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#e65100' }}>💎 토큰이 부족하신가요?</div>
-            <div style={{ fontSize: '0.8rem', color: '#795548', marginTop: '2px' }}>이메일로 충전 문의를 해주세요!</div>
+        {/* ── 토큰 충전 배너 (Gumroad) ── */}
+        <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '14px', marginBottom: '20px' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#e65100', marginBottom: '4px' }}>💎 토큰이 부족하신가요?</div>
+          <div style={{ fontSize: '0.78rem', color: '#795548', marginBottom: '10px' }}>
+            구매하신 명함 ID(<strong>{myCardId}</strong>)를 결제 시 "명함 ID" 칸에 꼭 입력해주세요. 결제 후 자동으로 토큰이 충전됩니다.
           </div>
-          <a
-            href="mailto:ot.helper7@gmail.com?subject=토큰 충전 문의&body=안녕하세요! 토큰 충전을 원합니다.%0A%0A명함 ID: "
-            style={{ background: '#ff6f00', color: 'white', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold', textDecoration: 'none' }}
-          >
-            충전 문의
-          </a>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {[
+              { label: 'A · 1,000토큰 (15,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_A' },
+              { label: 'B · 3,000토큰 (25,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_B' },
+              { label: 'C · 5,000토큰 (35,000원)',  url: 'https://REPLACE_WITH_GUMROAD_URL_C' },
+              { label: '메가 · 10,000토큰 (60,000원)', url: 'https://REPLACE_WITH_GUMROAD_URL_MEGA' },
+            ].map(tier => (
+              <a
+                key={tier.label}
+                href={tier.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ background: '#ff6f00', color: 'white', padding: '8px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 'bold', textDecoration: 'none' }}
+              >
+                {tier.label}
+              </a>
+            ))}
+          </div>
         </div>
 
         {/* ── AI 기능 제어 & MBTI ── */}
@@ -445,23 +492,47 @@ export default function AdminPage() {
 
         {/* ── AI 교육 관리 ── */}
         <div style={{ background: '#fff3e0', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #ffcc80' }}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem', color: '#e65100' }}>🤖 AI 챗봇 교육 (추가/삭제: 각 10토큰)</h3>
-          <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '10px' }}>AI에게 알려주고 싶은 내용을 입력하세요.</p>
+          <h3 style={{ marginTop: 0, fontSize: '1rem', color: '#e65100' }}>🤖 AI 챗봇 교육</h3>
+          <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '10px' }}>
+            AI에게 알려주고 싶은 내용을 입력하세요. {!formData.freeKnowledgeUsed
+              ? <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>첫 등록은 무료입니다 — 최대한 자세히 적어주세요!</span>
+              : '추가 10토큰 / 수정·삭제 각 30토큰이 차감됩니다.'}
+          </p>
           {formData.custom_knowledge?.length > 0 ? (
             <ul style={{ paddingLeft: '20px', margin: '10px 0' }}>
               {formData.custom_knowledge.map((item: string, idx: number) => (
                 <li key={idx} style={{ marginBottom: '8px', fontSize: '0.9rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>{item}</span>
-                    <button onClick={() => handleDeleteKnowledge(item)} style={{ fontSize: '0.7rem', background: '#ffcdd2', border: 'none', borderRadius: '5px', padding: '3px 6px', color: '#c62828', cursor: 'pointer', marginLeft: '10px' }}>삭제 (-10)</button>
-                  </div>
+                  {editingKnowledge?.original === item ? (
+                    <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+                      <textarea
+                        value={editingKnowledge.draft}
+                        onChange={e => setEditingKnowledge({ original: item, draft: e.target.value })}
+                        style={{ flex: 1, padding: '6px', border: '1px solid #ffcc80', borderRadius: '5px', fontSize: '0.85rem', height: '50px' }}
+                      />
+                      <button
+                        onClick={async () => { await handleEditKnowledge(item, editingKnowledge.draft); setEditingKnowledge(null); }}
+                        style={{ fontSize: '0.7rem', background: '#c8e6c9', border: 'none', borderRadius: '5px', padding: '6px 8px', color: '#2e7d32', cursor: 'pointer' }}
+                      >저장 (-30)</button>
+                      <button onClick={() => setEditingKnowledge(null)} style={{ fontSize: '0.7rem', background: '#eee', border: 'none', borderRadius: '5px', padding: '6px 8px', cursor: 'pointer' }}>취소</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{item}</span>
+                      <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+                        <button onClick={() => setEditingKnowledge({ original: item, draft: item })} style={{ fontSize: '0.7rem', background: '#fff3cd', border: 'none', borderRadius: '5px', padding: '3px 6px', color: '#856404', cursor: 'pointer' }}>수정 (-30)</button>
+                        <button onClick={() => handleDeleteKnowledge(item)} style={{ fontSize: '0.7rem', background: '#ffcdd2', border: 'none', borderRadius: '5px', padding: '3px 6px', color: '#c62828', cursor: 'pointer' }}>삭제 (-30)</button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
           ) : <div style={{ fontSize: '0.9rem', color: '#999', padding: '10px', fontStyle: 'italic' }}>등록된 교육 내용이 없습니다.</div>}
           <div style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
             <input value={newKnowledge} onChange={e => setNewKnowledge(e.target.value)} placeholder="새로운 교육 내용" style={{ flex: 1, padding: '8px', border: '1px solid #ddd', borderRadius: '5px' }} />
-            <button onClick={handleAddKnowledge} style={{ background: '#ff9800', color: 'white', border: 'none', borderRadius: '5px', padding: '0 15px', fontWeight: 'bold', cursor: 'pointer' }}>추가 (-10)</button>
+            <button onClick={handleAddKnowledge} style={{ background: '#ff9800', color: 'white', border: 'none', borderRadius: '5px', padding: '0 15px', fontWeight: 'bold', cursor: 'pointer' }}>
+              추가 {formData.freeKnowledgeUsed ? '(-10)' : '(무료)'}
+            </button>
           </div>
         </div>
 

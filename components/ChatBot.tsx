@@ -5,25 +5,35 @@ import { useState, useRef, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { getDoc, doc } from 'firebase/firestore';
 
+type ChatMessage = { role: string; text: string; formLink?: string };
+
 type Props = {
   context: any;
   username: string;
   themeColor?: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
-export default function ChatBot({ context, username, themeColor = '#1a237e' }: Props) {
-  const [isOpen, setIsOpen]     = useState(false);
+export default function ChatBot({ context, username, themeColor = '#1a237e', isOpen, onOpenChange }: Props) {
   const [input, setInput]       = useState('');
-  const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading]   = useState(false);
+  const [showLabel, setShowLabel] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ownerName = context?.name || '명함 주인';
 
+  // 처음 5초간 라벨 노출 후 아이콘만 남김 (계속 떠 있으면 거추장스러우니)
+  useEffect(() => {
+    const t = setTimeout(() => setShowLabel(false), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     if (context && messages.length === 0) {
       const initMessages = async () => {
-        const msgs: { role: string; text: string }[] = [];
+        const msgs: ChatMessage[] = [];
         try {
           const noticeSnap = await getDoc(doc(db, 'settings', 'notice'));
           if (noticeSnap.exists() && noticeSnap.data().isActive && noticeSnap.data().text) {
@@ -54,7 +64,7 @@ export default function ChatBot({ context, username, themeColor = '#1a237e' }: P
         body: JSON.stringify({ message: userMsg, context, username, mode: 'chat' }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.' }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink }]);
     } catch (_) {
       setMessages(prev => [...prev, { role: 'bot', text: '네트워크 오류' }]);
     } finally {
@@ -64,23 +74,35 @@ export default function ChatBot({ context, username, themeColor = '#1a237e' }: P
 
   return (
     <>
-      {/* 플로팅 버튼 */}
+      {/* 플로팅 버튼 (라벨 + 펄스로 시선 유도) */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { onOpenChange(true); setShowLabel(false); }}
           style={{
             position: 'fixed',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 30px)',
-            right: 'calc(env(safe-area-inset-right, 0px) + 20px)',
-            width: '60px', height: '60px', borderRadius: '50%',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+            left: '50%',
+            transform: 'translateX(-50%) translateZ(0)',
+            display: 'flex', alignItems: 'center', gap: showLabel ? '10px' : '0',
+            padding: showLabel ? '14px 22px' : '16px',
+            borderRadius: '50px',
             background: `linear-gradient(135deg, ${themeColor} 0%, ${themeColor}cc 100%)`,
-            color: 'white', border: 'none', fontSize: '28px',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 999999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transform: 'translateZ(0)', WebkitTapHighlightColor: 'transparent',
+            color: 'white', border: 'none', cursor: 'pointer', zIndex: 999999,
+            boxShadow: `0 6px 20px ${themeColor}66, 0 0 0 0 ${themeColor}55`,
+            animation: 'aimChatPulse 2.2s infinite',
+            WebkitTapHighlightColor: 'transparent',
+            transition: 'padding 0.3s ease',
           }}
         >
-          💬
+          <span style={{ fontSize: '24px', lineHeight: 1 }}>🤖</span>
+          {showLabel && <span style={{ fontWeight: 'bold', fontSize: '0.95rem', whiteSpace: 'nowrap' }}>AI에게 물어보세요!</span>}
+          <style>{`
+            @keyframes aimChatPulse {
+              0%   { box-shadow: 0 6px 20px ${themeColor}66, 0 0 0 0 ${themeColor}55; }
+              70%  { box-shadow: 0 6px 20px ${themeColor}66, 0 0 0 14px ${themeColor}00; }
+              100% { box-shadow: 0 6px 20px ${themeColor}66, 0 0 0 0 ${themeColor}00; }
+            }
+          `}</style>
         </button>
       )}
 
@@ -89,7 +111,8 @@ export default function ChatBot({ context, username, themeColor = '#1a237e' }: P
         <div style={{
           position: 'fixed',
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
-          right: 'calc(env(safe-area-inset-right, 0px) + 20px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
           width: '340px', height: '500px',
           maxWidth: 'calc(100vw - 40px)',
           maxHeight: 'calc(100vh - env(safe-area-inset-bottom, 0px) - 40px)',
@@ -97,12 +120,12 @@ export default function ChatBot({ context, username, themeColor = '#1a237e' }: P
           boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden', zIndex: 999999,
-          border: '1px solid #eee', transform: 'translateZ(0)',
+          border: '1px solid #eee',
         }}>
           {/* 헤더 */}
           <div style={{ padding: '15px', background: themeColor, color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}>🤖 AI 비서</span>
-            <button onClick={() => setIsOpen(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.4rem', cursor: 'pointer', padding: '0 5px' }}>×</button>
+            <button onClick={() => onOpenChange(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.4rem', cursor: 'pointer', padding: '0 5px' }}>×</button>
           </div>
 
           {/* 메시지 영역 */}
@@ -120,6 +143,22 @@ export default function ChatBot({ context, username, themeColor = '#1a237e' }: P
                 }}>
                   {msg.text}
                 </div>
+                {msg.formLink && (
+                  <div style={{ marginTop: '8px' }}>
+                    <a
+                      href={msg.formLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-block', padding: '10px 18px', borderRadius: '20px',
+                        background: themeColor, color: 'white', fontWeight: 'bold',
+                        fontSize: '0.85rem', textDecoration: 'none',
+                      }}
+                    >
+                      📝 제작 문의 폼 작성하기
+                    </a>
+                  </div>
+                )}
               </div>
             ))}
             {loading && <div style={{ textAlign: 'left', color: '#888', fontSize: '0.8rem', marginLeft: '10px', marginTop: '5px' }}>AI가 생각 중... ✍️</div>}

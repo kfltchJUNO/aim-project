@@ -15,7 +15,9 @@ const CLIENT_DATA = {
   owner_email: "",     // 예: hong@gmail.com (나중에 수정 권한 가질 사람)
   
   // 2. 설정
-  credits: 1000,                         // 기본 토큰 (무료 체험용)
+  credits: 50,                           // 베이직 기본 무료 토큰 (대화 약 25회 분량)
+                                          // ※ 스마트 플랜(A/B/C/메가) 구매 고객이면 50 + 구매한 토큰 수를 더해서 입력하세요
+                                          //   예: 스마트 B(3,000토큰) 구매 → credits: 3050
   profile_img: "https://placehold.co/150", // 프로필 이미지 주소 (없으면 이대로)
   
   // 3. AI 학습용 데이터 (TMI)

@@ -6,6 +6,15 @@ import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from
 // 토큰 비용 (서버에서만 차감)
 const TOKEN_COST: Record<string, number> = { chat: 2, quiz: 3, synergy: 3, translate: 1 };
 
+// 제작 문의 구글폼 URL — 모든 명함에서 동일하게 사용
+const PRODUCTION_INQUIRY_FORM_URL = 'https://forms.gle/Y3hqnTYhxN5cQ4ka6';
+
+// 제작 문의로 판단할 키워드 (하나라도 포함되면 매칭)
+const PRODUCTION_INQUIRY_KEYWORDS = [
+  '제작', '만들어', '만들고', '만드는', '가격', '비용', '견적', '얼마',
+  '구매', '신청', '의뢰', '주문', '문의', '명함 어떻게', '이거 어떻게',
+];
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -41,7 +50,20 @@ export async function POST(req: Request) {
     }
 
     // ================================================================
-    // 2. 토큰 차감 (서버에서만 처리 — 클라이언트 중복 차감 없음)
+    // 2. 제작 문의 감지 → 구글폼 링크 즉시 안내 (토큰 차감 없음, AI 호출 없음)
+    // ================================================================
+    if (mode === 'chat' && message) {
+      const isInquiry = PRODUCTION_INQUIRY_KEYWORDS.some(kw => message.includes(kw));
+      if (isInquiry) {
+        return NextResponse.json({
+          reply: '저처럼 AI 챗봇이 들어간 전자명함을 만들어보고 싶으신가요? 😊 아래 폼을 작성해주시면 빠르게 안내드릴게요!',
+          formLink: PRODUCTION_INQUIRY_FORM_URL,
+        });
+      }
+    }
+
+    // ================================================================
+    // 3. 토큰 차감 (서버에서만 처리 — 클라이언트 중복 차감 없음)
     // ================================================================
     if (username) {
       const cost = TOKEN_COST[mode] ?? 2;
@@ -64,11 +86,22 @@ export async function POST(req: Request) {
     }
 
     // ================================================================
-    // 3. 시스템 프롬프트 구성
+    // 4. 공지사항 로드
+    // ================================================================
+    let noticeInjection = '';
+    try {
+      const noticeSnap = await getDoc(doc(db, 'settings', 'notice'));
+      if (noticeSnap.exists() && noticeSnap.data().isActive && noticeSnap.data().text) {
+        noticeInjection = `[운영자 공지 - 대화 시작 시 반드시 먼저 안내할 것]: ${noticeSnap.data().text}\n`;
+      }
+    } catch (_) {}
+
+    // ================================================================
+    // 5. 시스템 프롬프트 구성
     // ================================================================
     const metaInstruction = `
 [최상위 절대 규칙]
-1. 이 서비스의 제작 문의, 결제, 요금 등에 대해 질문하면 "제작 문의는 ot.helper7@gmail.com 으로 연락 부탁드립니다."라고만 답변해.
+1. 이 서비스의 제작 문의, 결제, 요금 등에 대해 질문하면 "저처럼 AI 챗봇이 들어간 전자명함이 궁금하신가요? 아래 링크에서 문의해주세요: ${PRODUCTION_INQUIRY_FORM_URL}" 라고만 답변해.
 2. 답변 내용에 **강조표시**나 *기울임* 같은 마크다운(Markdown) 기호를 절대 사용하지 말고, 오직 깔끔한 순수 텍스트(Plain text)로만 자연스럽게 답변해.
 `;
 
@@ -80,7 +113,7 @@ export async function POST(req: Request) {
       ? `[특별 지시사항]: ${context.ai_prompt}`
       : `너는 '${context?.name}'님의 AI 비서야. 직업은 '${context?.role}'이야.`;
 
-    let systemPrompt = metaInstruction + '\n' + customKnowledge + '\n' + customInstruction;
+    let systemPrompt = noticeInjection + metaInstruction + '\n' + customKnowledge + '\n' + customInstruction;
     let userPrompt   = '';
 
     if (mode === 'quiz') {
@@ -122,12 +155,12 @@ export async function POST(req: Request) {
     }
 
     // ================================================================
-    // 4. Gemini API 호출
+    // 6. Gemini API 호출
     // ================================================================
     const isJsonMode = mode === 'quiz' || mode === 'synergy' || mode === 'translate';
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

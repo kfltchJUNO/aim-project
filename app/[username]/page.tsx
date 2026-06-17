@@ -33,6 +33,7 @@ export default function NameCard({ params }: { params: { username: string } }) {
   const [loading, setLoading] = useState(true);
   const [activeFeature, setActiveFeature] = useState<'quiz' | 'synergy' | null>(null);
   const [shareMsg, setShareMsg] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   // 데이터 로드 + 방문자 통계 기록
   useEffect(() => {
@@ -161,6 +162,30 @@ export default function NameCard({ params }: { params: { username: string } }) {
         );
       })()}
 
+      {/* ── AI 챗봇 CTA (킥인 기능 강조) ── */}
+      {isChatbotEnabled && (
+        <div style={{ padding: '0 20px', marginBottom: '20px' }}>
+          <button
+            onClick={() => setChatOpen(true)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '14px',
+              padding: '16px 18px', borderRadius: '16px', border: 'none', cursor: 'pointer',
+              background: `linear-gradient(135deg, ${colors.theme} 0%, ${colors.theme}cc 100%)`,
+              color: 'white', textAlign: 'left',
+              boxShadow: `0 6px 18px ${colors.theme}55`,
+            }}
+          >
+            <span style={{ fontSize: '2rem' }}>🤖</span>
+            <span>
+              <div style={{ fontWeight: 'bold', fontSize: '1.05rem' }}>AI 비서에게 물어보세요</div>
+              <div style={{ fontSize: '0.82rem', opacity: 0.9, marginTop: '2px' }}>
+                {data.name}님에 대해 무엇이든 질문해보세요 →
+              </div>
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* ── 흥미 기능 버튼 ── */}
       <div style={{ padding: '0 20px', marginBottom: '25px', display: 'flex', gap: '10px' }}>
         {isQuizEnabled && (
@@ -261,7 +286,15 @@ export default function NameCard({ params }: { params: { username: string } }) {
 
       {/* ── 챗봇 & 방명록 ── */}
       <div style={{ padding: '20px' }}>
-        {isChatbotEnabled && <ChatBot context={data} username={params.username} themeColor={colors.theme} />}
+        {isChatbotEnabled && (
+          <ChatBot
+            context={data}
+            username={params.username}
+            themeColor={colors.theme}
+            isOpen={chatOpen}
+            onOpenChange={setChatOpen}
+          />
+        )}
         <div style={{ height: '30px' }} />
         <Guestbook username={params.username} themeColor={colors.theme} isDark={isDark} />
       </div>
