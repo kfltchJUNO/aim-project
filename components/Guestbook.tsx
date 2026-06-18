@@ -27,7 +27,8 @@ export default function Guestbook({ username, themeColor = '#1a237e', isDark = f
   useEffect(() => {
     const q = query(
       collection(db, 'guestbooks'),
-      where('to_user', '==', username)
+      where('to_user', '==', username),
+      orderBy('createdAt', 'desc')
     );
     const unsubscribe = onSnapshot(q, snap => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -75,7 +76,7 @@ export default function Guestbook({ username, themeColor = '#1a237e', isDark = f
 
   const inputStyle: React.CSSProperties = {
     border: `1px solid ${borderC}`, padding: '8px', borderRadius: '8px',
-    fontSize: '0.9rem', outline: 'none', flex: 1,
+    fontSize: '0.9rem', outline: 'none', flex: 1, minWidth: 0, boxSizing: 'border-box',
     background: isDark ? 'rgba(255,255,255,0.1)' : 'white',
     color: txtColor,
   };
@@ -87,8 +88,8 @@ export default function Guestbook({ username, themeColor = '#1a237e', isDark = f
       </h3>
 
       {/* 입력 폼 */}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
           <input placeholder="이름" value={input.name} onChange={e => setInput({ ...input, name: e.target.value })} maxLength={10} style={inputStyle} />
           <input type="password" placeholder="비밀번호(4자리)" value={input.pw} onChange={e => setInput({ ...input, pw: e.target.value })} maxLength={4} style={inputStyle} />
         </div>
