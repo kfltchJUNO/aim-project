@@ -4,18 +4,13 @@ import crypto from 'crypto';
 import { db } from '@/lib/firebase';
 import { doc, runTransaction, collection, serverTimestamp } from 'firebase/firestore';
 
-// Lemon Squeezy Variant ID (또는 상품명) → 지급할 토큰 수 매핑
-// 레몬 스퀴지 상품 옵션(Variant) 생성 후 얻은 Variant ID를 여기에 채워주세요.
+// Lemon Squeezy Variant ID → 지급할 토큰 수 매핑
 export const VARIANT_TOKEN_MAP: Record<string, number> = {
-  // 예시: 레몬 스퀴지 대시보드에서 확인한 Variant ID 입력
-  // '123456': 1000,
-  // '123457': 3000,
-  // '123458': 5000,
-  // '123459': 10000,
-  'smart_a': 1000,
-  'smart_b': 3000,
-  'smart_c': 5000,
-  'smart_mega': 10000,
+  '2088337': 0,     // 베이직 플랜 (명함 생성 1회 결제)
+  '2088339': 1000,  // 스마트 플랜 A (1,000 토큰)
+  '2088349': 3000,  // 스마트 플랜 B (3,000 토큰)
+  '2088350': 5000,  // 스마트 플랜 C (5,000 토큰)
+  '2088352': 10000, // 스마트 플랜 메가 (10,000 토큰)
 };
 
 export async function POST(req: Request) {
