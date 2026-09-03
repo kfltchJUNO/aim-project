@@ -41,6 +41,48 @@ export default function NameCardClient({
   const [shareMsg, setShareMsg] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadForm, setLeadForm] = useState({ name: '', affiliation: '', contact: '', memo: '' });
+  const [submittingLead, setSubmittingLead] = useState(false);
+
+  // ─── 링크 클릭 트래킹 ──────────────────────────────────────────────────
+  const trackClick = async (type: string, label: string, targetUrl?: string) => {
+    if (!params.username) return;
+    try {
+      await addDoc(collection(db, 'users', params.username, 'clicks'), {
+        type,
+        label: (label || '').slice(0, 100),
+        targetUrl: (targetUrl || '').slice(0, 200),
+        clickedAt: serverTimestamp(),
+      });
+    } catch (_) {}
+  };
+
+  // ─── 내 연락처 전달 제출 ────────────────────────────────────────────────
+  const handleSendLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadForm.name.trim() || !leadForm.contact.trim()) {
+      alert('이름과 연락처(전화번호 또는 이메일)를 입력해 주세요.');
+      return;
+    }
+    setSubmittingLead(true);
+    try {
+      await addDoc(collection(db, 'users', params.username, 'leads'), {
+        name: leadForm.name.trim(),
+        affiliation: leadForm.affiliation.trim(),
+        contact: leadForm.contact.trim(),
+        memo: leadForm.memo.trim(),
+        createdAt: serverTimestamp(),
+      });
+      alert('연락처가 성공적으로 전달되었습니다! 🎉');
+      setLeadForm({ name: '', affiliation: '', contact: '', memo: '' });
+      setLeadModalOpen(false);
+    } catch (_) {
+      alert('연락처 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setSubmittingLead(false);
+    }
+  };
 
   // 데이터 로드 + 방문자 통계 기록
   useEffect(() => {
@@ -184,13 +226,16 @@ export default function NameCardClient({
             <h1 style={{ fontSize: '1.8rem', margin: '0 0 8px 0', fontWeight: '800' }}>{data.name}</h1>
             <p style={{ fontSize: '0.95rem', opacity: 0.9, margin: 0 }}>{data.role}</p>
 
-            {/* 헤더 버튼 그룹 (번역 + 연락처 저장 + QR + 공유) */}
+            {/* 헤더 버튼 그룹 (번역 + 연락처 저장 + 연락처 전달 + QR + 공유) */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '15px', flexWrap: 'wrap' }}>
               {isTranslationEnabled && (
                 <button onClick={handleTranslate} style={headerBtnStyle}>🌐 English</button>
               )}
               <button onClick={handleDownloadVcard} style={headerBtnStyle}>
                 📇 연락처 저장
+              </button>
+              <button onClick={() => setLeadModalOpen(true)} style={{ ...headerBtnStyle, background: 'rgba(255,255,255,0.25)', fontWeight: 'bold' }}>
+                📩 내 연락처 전달
               </button>
               <button onClick={() => setQrOpen(true)} style={headerBtnStyle}>
                 📷 QR 코드
@@ -262,7 +307,7 @@ export default function NameCardClient({
                     ? `mailto:${link.value}`
                     : link.value.startsWith('http') ? link.value : `https://${link.value}`;
                   return (
-                    <a key={i} href={href} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, color: textColor }}>
+                    <a key={i} href={href} target="_blank" rel="noopener noreferrer" onClick={() => trackClick(link.type || 'link', link.value, href)} style={{ ...linkStyle, color: textColor }}>
                       <span style={{ marginRight: '12px', fontSize: '1.2rem' }}>{icon}</span>
                       <span style={{ fontWeight: '600' }}>{link.value}</span>
                     </a>
@@ -414,6 +459,115 @@ export default function NameCardClient({
                 닫기
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 역방향 연락처 전달 모달 ── */}
+      {leadModalOpen && (
+        <div style={modalOverlay} onClick={() => setLeadModalOpen(false)}>
+          <div
+            style={{
+              background: isDark ? '#1a1a2e' : 'white',
+              color: textColor,
+              padding: '24px 20px',
+              borderRadius: '24px',
+              maxWidth: '360px',
+              width: '90%',
+              textAlign: 'left',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: '1.2rem', margin: '0 0 6px 0', fontWeight: 'bold' }}>
+              📩 {data.name}님에게 연락처 전달하기
+            </h2>
+            <p style={{ fontSize: '0.82rem', color: subColor, margin: '0 0 16px 0' }}>
+              명함 주인에게 내 성함과 연락처를 직접 남길 수 있습니다.
+            </p>
+
+            <form onSubmit={handleSendLead} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>성함 *</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="예: 홍길동"
+                  value={leadForm.name}
+                  onChange={(e) => setLeadForm({ ...leadForm, name: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>소속 / 직함</label>
+                <input
+                  type="text"
+                  placeholder="예: 한국대학교 연구원"
+                  value={leadForm.affiliation}
+                  onChange={(e) => setLeadForm({ ...leadForm, affiliation: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>연락처 (전화번호 / 이메일) *</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="010-0000-0000 또는 email@domain.com"
+                  value={leadForm.contact}
+                  onChange={(e) => setLeadForm({ ...leadForm, contact: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>메시지 / 메모</label>
+                <textarea
+                  placeholder="전하고 싶은 메시지나 메모를 남겨주세요"
+                  value={leadForm.memo}
+                  onChange={(e) => setLeadForm({ ...leadForm, memo: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem', height: '60px', resize: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                <button
+                  type="submit"
+                  disabled={submittingLead}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: colors.theme,
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  {submittingLead ? '전송 중...' : '전달하기'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeadModalOpen(false)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: '1px solid #ccc',
+                    background: 'transparent',
+                    color: textColor,
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  취소
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -169,7 +169,13 @@ export default function AdminPage() {
     };
   }, []);
 
-  // ── 방문자 통계 ──────────────────────────────────────────────────────────
+  const [leads, setLeads] = useState<any[]>([]);
+  const [showLeads, setShowLeads] = useState(false);
+  const [clickStats, setClickStats] = useState<{ total: number; mobile: number; email: number; doi: number; other: number }>({
+    total: 0, mobile: 0, email: 0, doi: 0, other: 0
+  });
+
+  // ── 방문자 통계 & 클릭 통계 & 수신 연락처 조회 ─────────────────────────────
   const fetchVisitStats = async (cardId: string) => {
     try {
       const allSnap = await getDocs(collection(db, 'users', cardId, 'visits'));
@@ -180,6 +186,64 @@ export default function AdminPage() {
         return ts && ts >= todayStart;
       }).length;
       setVisitStats({ total, today: todayCount });
+
+      fetchClickStats(cardId);
+      fetchLeads(cardId);
+    } catch (_) {}
+  };
+
+  // ── 수신 연락처 (Leads) 조회 ────────────────────────────────────────────────
+  const fetchLeads = async (cardId: string) => {
+    try {
+      const q = query(collection(db, 'users', cardId, 'leads'), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => {
+        const data = d.data();
+        const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString('ko-KR') : '방금 전';
+        return { id: d.id, ...data, dateStr };
+      });
+      setLeads(list);
+    } catch (_) { setLeads([]); }
+  };
+
+  // ── 엑셀(CSV) 다운로드 ──────────────────────────────────────────────────────
+  const handleExportLeadsCsv = () => {
+    if (leads.length === 0) return alert('수신된 연락처가 없습니다.');
+
+    let csvStr = '\uFEFF날짜,성함,소속/직함,연락처,메시지/메모\n';
+    leads.forEach(l => {
+      const date = `"${(l.dateStr || '').replace(/"/g, '""')}"`;
+      const name = `"${(l.name || '').replace(/"/g, '""')}"`;
+      const aff = `"${(l.affiliation || '').replace(/"/g, '""')}"`;
+      const contact = `"${(l.contact || '').replace(/"/g, '""')}"`;
+      const memo = `"${(l.memo || '').replace(/"/g, '""')}"`;
+      csvStr += `${date},${name},${aff},${contact},${memo}\n`;
+    });
+
+    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `${myCardId || 'my'}_수신연락처.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // ── 클릭 통계 조회 ──────────────────────────────────────────────────────────
+  const fetchClickStats = async (cardId: string) => {
+    try {
+      const snap = await getDocs(collection(db, 'users', cardId, 'clicks'));
+      let mobile = 0, email = 0, doi = 0, other = 0;
+      snap.docs.forEach(d => {
+        const type = d.data().type;
+        if (type === 'mobile') mobile++;
+        else if (type === 'email') email++;
+        else if (type === 'doi') doi++;
+        else other++;
+      });
+      setClickStats({ total: snap.size, mobile, email, doi, other });
     } catch (_) {}
   };
 
@@ -393,6 +457,111 @@ export default function AdminPage() {
           <div style={{ flex: 1, textAlign: 'center', background: 'white', borderRadius: '8px', padding: '12px' }}>
             <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#e65100' }}>{credits}</div>
             <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '2px' }}>토큰 잔액</div>
+          </div>
+        </div>
+
+        {/* ── 📩 수신된 연락처 (Leads - 역방향 연락처 교환) ── */}
+        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1a237e', fontWeight: 'bold' }}>
+                📩 수신된 연락처 ({leads.length}건)
+              </h3>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#666' }}>
+                방문자가 전달한 성함, 소속, 연락처 목록입니다.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleExportLeadsCsv}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#2e7d32',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                }}
+              >
+                📥 엑셀(CSV) 다운로드
+              </button>
+              <button
+                onClick={() => setShowLeads(!showLeads)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #ccc',
+                  background: '#f9f9f9',
+                  color: '#333',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                {showLeads ? '접기' : '목록 보기'}
+              </button>
+            </div>
+          </div>
+
+          {showLeads && (
+            <div style={{ marginTop: '16px', borderTop: '1px solid #eee', paddingTop: '14px' }}>
+              {leads.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: '0.88rem' }}>
+                  아직 수신된 연락처가 없습니다.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {leads.map((l, idx) => (
+                    <div key={idx} style={{ background: '#f9fbfd', border: '1px solid #e3f2fd', padding: '12px 14px', borderRadius: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '0.95rem', color: '#1a237e' }}>{l.name}</strong>
+                        <span style={{ fontSize: '0.75rem', color: '#888' }}>{l.dateStr}</span>
+                      </div>
+                      {l.affiliation && (
+                        <div style={{ fontSize: '0.82rem', color: '#555', marginBottom: '2px' }}>
+                          🏢 소속/직함: {l.affiliation}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.85rem', color: '#2e7d32', fontWeight: 'bold', marginBottom: '4px' }}>
+                        📞 연락처: {l.contact}
+                      </div>
+                      {l.memo && (
+                        <div style={{ fontSize: '0.82rem', color: '#444', background: '#ffffff', padding: '8px', borderRadius: '6px', border: '1px solid #e0e0e0', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                          📝 메모: {l.memo}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── 📊 클릭 애널리틱스 트래킹 요약 ── */}
+        <div style={{ background: '#f8f9fa', border: '1px solid #e9ecef', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+          <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: '#343a40', fontWeight: 'bold' }}>
+            📊 링크 클릭 애널리틱스 (총 {clickStats.total}회)
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px' }}>
+            <div style={{ background: 'white', border: '1px solid #e0e0e0', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1565c0' }}>{clickStats.mobile}회</div>
+              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>📞 전화 걸기</div>
+            </div>
+            <div style={{ background: 'white', border: '1px solid #e0e0e0', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#2e7d32' }}>{clickStats.email}회</div>
+              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>✉️ 이메일 작성</div>
+            </div>
+            <div style={{ background: 'white', border: '1px solid #e0e0e0', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#c62828' }}>{clickStats.doi}회</div>
+              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>📑 논문 DOI 클릭</div>
+            </div>
+            <div style={{ background: 'white', border: '1px solid #e0e0e0', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#6a1b9a' }}>{clickStats.other}회</div>
+              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>🔗 기타 웹사이트</div>
+            </div>
           </div>
         </div>
 
