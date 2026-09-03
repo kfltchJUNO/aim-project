@@ -395,6 +395,70 @@ export default function AdminPage() {
     } finally { setUploading(false); }
   };
 
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file || !myCardId) return;
+    const isBasicPlan = formData.aiEnabled === false;
+    if (isBasicPlan && credits < 30) return alert('커버 배경 변경은 30토큰이 필요합니다. (토큰이 부족합니다)');
+    if (isBasicPlan && !confirm('커버 배경 이미지를 변경하시겠습니까?\n(30토큰이 차감됩니다)')) return;
+
+    setUploading(true);
+    try {
+      if (isBasicPlan) {
+        await runTransaction(db, async transaction => {
+          const userRef = doc(db, 'users', myCardId);
+          const userDoc = await transaction.get(userRef);
+          if (!userDoc.exists()) throw 'User not found';
+          const current = userDoc.data().credits || 0;
+          if (current < 30) throw 'Not enough credits';
+          transaction.update(userRef, { credits: current - 30 });
+          const logRef = doc(collection(db, 'users', myCardId, 'logs'));
+          transaction.set(logRef, { type: '사용', amount: -30, reason: '커버 이미지 변경', date: new Date() });
+        });
+      }
+
+      const storageRef = ref(storage, `cover_images/${myCardId}_${Date.now()}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setFormData((prev: any) => ({ ...prev, cover_img: url }));
+      alert('🖼️ 커버 배경 이미지가 변경되었습니다.');
+    } catch (_) {
+      alert('오류 발생');
+    } finally { setUploading(false); }
+  };
+
+  const [parsingPdf, setParsingPdf] = useState(false);
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !myCardId) return;
+    if (credits < 50) return alert('PDF/CV 파일 AI 학습은 50토큰이 필요합니다. (토큰이 부족합니다)');
+    if (!confirm(`'${file.name}' 파일을 AI에게 학습시키겠습니까?\n(50토큰이 차감되며 핵심 지식이 자동 추출됩니다)`)) return;
+
+    setParsingPdf(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      data.append('username', myCardId);
+
+      const res = await fetch('/api/parse-pdf', {
+        method: 'POST',
+        body: data,
+      });
+
+      const result = await res.json();
+      if (result.ok) {
+        alert(`📄 AI 파일 학습 완료!\n${result.extractedPoints.length}개의 핵심 지식이 추가되었습니다.`);
+      } else {
+        alert(result.error || 'AI 파일 학습에 실패했습니다.');
+      }
+    } catch (_) {
+      alert('파일 업로드 및 파싱 중 오류가 발생했습니다.');
+    } finally {
+      setParsingPdf(false);
+      e.target.value = '';
+    }
+  };
+
   const handleItemChange    = (key: string, idx: number, field: string, val: string) => { const l = [...formData[key]]; l[idx][field] = val; setFormData({ ...formData, [key]: l }); };
   const addItem             = (key: string) => { const empty = key === 'links' ? { type: 'mobile', value: '' } : key === 'history' ? { date: '', title: '', desc: '' } : { title: '', link: '', desc: '' }; setFormData({ ...formData, [key]: [...formData[key], empty] }); };
   const removeItem          = (key: string, idx: number) => { const l = [...formData[key]]; l.splice(idx, 1); setFormData({ ...formData, [key]: l }); };
@@ -703,6 +767,32 @@ export default function AdminPage() {
               추가 {formData.freeKnowledgeUsed ? '(-10)' : '(무료)'}
             </button>
           </div>
+
+          {/* PDF/CV 파일 AI 학습 박스 */}
+          <div style={{ background: '#ffffff', border: '1px dashed #e65100', borderRadius: '10px', padding: '12px', marginTop: '14px' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#e65100', marginBottom: '4px' }}>
+              📄 논문 PDF / CV(이력서) 파일 AI 자동 학습 (50토큰 차감)
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#666', marginBottom: '8px' }}>
+              파일을 업로드하면 AI가 핵심 업적과 연구 실적을 자동으로 추출하여 지식 베이스에 등록합니다.
+            </div>
+            <label
+              style={{
+                display: 'inline-block',
+                background: '#e65100',
+                color: 'white',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+                cursor: parsingPdf ? 'wait' : 'pointer',
+                opacity: parsingPdf ? 0.7 : 1,
+              }}
+            >
+              {parsingPdf ? '🤖 AI 파일 분석 및 학습 중...' : '📄 PDF / CV 파일 선택 및 자동 학습 (-50토큰)'}
+              <input type="file" hidden onChange={handlePdfUpload} accept=".pdf,.txt,.doc,.docx" disabled={parsingPdf} />
+            </label>
+          </div>
         </div>
 
         {/* ── 섹션 관리 (프로필) ── */}
@@ -719,12 +809,59 @@ export default function AdminPage() {
           </div>
           {profileConfig.isOpenInAdmin && (
             <div style={{ padding: '20px', textAlign: 'center' }}>
-              <img src={formData.profile_img || '/profile_default.jpg'} style={{ width: '80px', height: '80px', borderRadius: '50%' }} alt="profile" />
-              <br />
-              <label style={{ cursor: 'pointer', color: 'blue', fontSize: '0.9rem' }}>
-                {uploading ? '업로드 중' : '사진 변경'}
-                <input type="file" hidden onChange={handleImageUpload} accept="image/*" />
-              </label>
+              <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', alignItems: 'center', marginBottom: '15px' }}>
+                <div>
+                  <img
+                    src={formData.profile_img || '/profile_default.jpg'}
+                    style={{
+                      width: '80px',
+                      height: '80px',
+                      borderRadius: formData.avatar_shape === 'rounded' ? '18px' : formData.avatar_shape === 'square' ? '8px' : '50%',
+                      objectFit: 'cover',
+                      border: '2px solid #ddd',
+                    }}
+                    alt="profile"
+                  />
+                  <br />
+                  <label style={{ cursor: 'pointer', color: '#1565c0', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                    {uploading ? '업로드 중' : '프로필 사진 변경'}
+                    <input type="file" hidden onChange={handleImageUpload} accept="image/*" />
+                  </label>
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: '#555' }}>사진 모양 선택</label>
+                  <select
+                    value={formData.avatar_shape || 'circle'}
+                    onChange={e => setFormData({ ...formData, avatar_shape: e.target.value })}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '0.85rem' }}
+                  >
+                    <option value="circle">⭕ 원형 (Circle)</option>
+                    <option value="rounded">▢ 라운드 사각형 (Rounded)</option>
+                    <option value="square">⏹️ 직사각형 (Square)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 커버 배경 이미지 업로드 */}
+              <div style={{ background: '#f8f9fa', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px dashed #ccc', textAlign: 'left' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '4px' }}>
+                  🖼️ 프로필 헤더 커버 배경 이미지 (스마트 플랜 무료 / 베이직 30토큰)
+                </label>
+                {formData.cover_img && (
+                  <div style={{ position: 'relative', marginBottom: '8px' }}>
+                    <img src={formData.cover_img} style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px' }} alt="cover preview" />
+                    <button
+                      onClick={() => setFormData({ ...formData, cover_img: '' })}
+                      style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer' }}
+                    >✕</button>
+                  </div>
+                )}
+                <label style={{ cursor: 'pointer', color: '#2e7d32', fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block' }}>
+                  {uploading ? '업로드 중...' : '🖼️ 커버 배경 이미지 변경'}
+                  <input type="file" hidden onChange={handleCoverUpload} accept="image/*" />
+                </label>
+              </div>
+
               <input value={formData.name  || ''} onChange={e => setFormData({ ...formData, name:  e.target.value })} placeholder="이름"  style={inputStyle} />
               <input value={formData.role  || ''} onChange={e => setFormData({ ...formData, role:  e.target.value })} placeholder="직함"  style={inputStyle} />
               <textarea value={formData.intro || ''} onChange={e => setFormData({ ...formData, intro: e.target.value })} placeholder="소개" style={{ ...inputStyle, height: '80px' }} />

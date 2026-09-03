@@ -218,9 +218,14 @@ export default function NameCardClient({
       {/* ── 프로필 헤더 ── */}
       {(() => {
         const info = getSecInfo('profile', '기본 정보', true);
+        const avatarRadius = data.avatar_shape === 'rounded' ? '24px' : data.avatar_shape === 'square' ? '12px' : '50%';
+        const headerBg = data.cover_img
+          ? `linear-gradient(180deg, rgba(0,0,0,0.3) 0%, ${colors.theme} 100%), url(${data.cover_img}) center/cover no-repeat`
+          : colors.theme;
+
         return (
-          <div style={{ padding: '50px 20px 40px', textAlign: 'center', background: colors.theme, color: 'white', borderRadius: '0 0 30px 30px', marginBottom: '30px' }}>
-            <div style={{ width: '110px', height: '110px', borderRadius: '50%', border: '4px solid rgba(255,255,255,0.3)', margin: '0 auto 15px', overflow: 'hidden', background: 'white' }}>
+          <div style={{ padding: '50px 20px 40px', textAlign: 'center', background: headerBg, color: 'white', borderRadius: '0 0 30px 30px', marginBottom: '30px', position: 'relative' }}>
+            <div style={{ width: '110px', height: '110px', borderRadius: avatarRadius, border: '4px solid rgba(255,255,255,0.4)', margin: '0 auto 15px', overflow: 'hidden', background: 'white', boxShadow: '0 8px 20px rgba(0,0,0,0.15)' }}>
               <img src={data.profile_img || '/profile_default.jpg'} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <h1 style={{ fontSize: '1.8rem', margin: '0 0 8px 0', fontWeight: '800' }}>{data.name}</h1>

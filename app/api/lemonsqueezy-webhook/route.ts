@@ -63,21 +63,44 @@ export async function POST(req: Request) {
       const userRef = doc(db, 'users', username);
       const userDoc = await transaction.get(userRef);
 
-      if (!userDoc.exists()) {
-        throw new Error(`User not found: ${username}`);
-      }
-
-      const userData = userDoc.data();
-      const currentCredits = userData.credits || 0;
-      const currentPaidTotal = userData.paidTotal || 0;
+      const customerEmail = payload.data?.attributes?.user_email || customData.email || '';
+      const customerName = payload.data?.attributes?.user_name || customData.name || username;
 
       // 센트/원 단위 결제금액 환산 (USD 100 = $1.00)
       const paidAmount = typeof orderTotal === 'number' ? Math.round(orderTotal / 100) : 0;
 
-      transaction.update(userRef, {
-        credits: currentCredits + tokenAmount,
-        paidTotal: currentPaidTotal + paidAmount,
-      });
+      if (!userDoc.exists()) {
+        // 유저 문서가 없으면 셀프 온보딩 자동 생성을 통해 신규 명함 및 템플릿 생성
+        transaction.set(userRef, {
+          name: customerName,
+          role: '전문가 / 연구원',
+          intro: '반갑습니다! AI 디지털 명함입니다.',
+          owner_email: customerEmail,
+          credits: tokenAmount,
+          paidTotal: paidAmount,
+          isActive: true,
+          aiEnabled: true,
+          chatbotEnabled: true,
+          translationEnabled: true,
+          quizEnabled: true,
+          synergyEnabled: true,
+          links: [],
+          history: [],
+          projects: [],
+          custom_sections: [],
+          custom_knowledge: [],
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        const userData = userDoc.data();
+        const currentCredits = userData.credits || 0;
+        const currentPaidTotal = userData.paidTotal || 0;
+
+        transaction.update(userRef, {
+          credits: currentCredits + tokenAmount,
+          paidTotal: currentPaidTotal + paidAmount,
+        });
+      }
 
       const logRef = doc(collection(db, 'users', username, 'logs'));
       transaction.set(logRef, {
