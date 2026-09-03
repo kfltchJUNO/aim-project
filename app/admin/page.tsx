@@ -192,7 +192,11 @@ export default function AdminPage() {
     } catch (_) {}
   };
 
-  // ── 수신 연락처 (Leads) 조회 ────────────────────────────────────────────────
+  const [academicNotes, setAcademicNotes] = useState<any[]>([]);
+  const [showAcademicNotes, setShowAcademicNotes] = useState(false);
+  const [uploadingSlide, setUploadingSlide] = useState(false);
+
+  // ── 수신 연락처 (Leads) & 학술 인연 기록 조회 ────────────────────────────────
   const fetchLeads = async (cardId: string) => {
     try {
       const q = query(collection(db, 'users', cardId, 'leads'), orderBy('createdAt', 'desc'));
@@ -203,7 +207,123 @@ export default function AdminPage() {
         return { id: d.id, ...data, dateStr };
       });
       setLeads(list);
+      fetchAcademicNotes(cardId);
     } catch (_) { setLeads([]); }
+  };
+
+  // ── 수신 학술 인연 기록 조회 ──────────────────────────────────────────────
+  const fetchAcademicNotes = async (cardId: string) => {
+    try {
+      const q = query(collection(db, 'users', cardId, 'academic_notes'), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d => {
+        const data = d.data();
+        const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString('ko-KR') : '방금 전';
+        return { id: d.id, ...data, dateStr };
+      });
+      setAcademicNotes(list);
+    } catch (_) { setAcademicNotes([]); }
+  };
+
+  // ── 학술 인연 기록 엑셀(CSV) 다운로드 (10토큰 차감) ────────────────────────
+  const handleExportAcademicNotesCsv = async () => {
+    if (academicNotes.length === 0) return alert('수신된 학술 인연 기록이 없습니다.');
+    if (credits < 10) return alert('학술 인연 기록 엑셀 다운로드는 10토큰이 필요합니다.');
+    if (!confirm('학술 인연 기록 엑셀 파일(CSV)을 다운로드하시겠습니까?\n(10토큰이 차감됩니다)')) return;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', myCardId);
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw new Error('User not found');
+        const current = userDoc.data().credits || 0;
+        if (current < 10) throw new Error('INSUFFICIENT');
+
+        transaction.update(userRef, { credits: current - 10 });
+        const logRef = doc(collection(db, 'users', myCardId, 'logs'));
+        transaction.set(logRef, {
+          type: '사용',
+          amount: -10,
+          reason: '학술 인연 기록 엑셀 다운로드',
+          date: new Date(),
+        });
+      });
+
+      let csvStr = '\uFEFF날짜,학회/행사명,성함,연락처,대화메모\n';
+      academicNotes.forEach(l => {
+        const date = `"${(l.dateStr || '').replace(/"/g, '""')}"`;
+        const event = `"${(l.event || '').replace(/"/g, '""')}"`;
+        const name = `"${(l.name || '').replace(/"/g, '""')}"`;
+        const contact = `"${(l.contact || '').replace(/"/g, '""')}"`;
+        const note = `"${(l.note || '').replace(/"/g, '""')}"`;
+        csvStr += `${date},${event},${name},${contact},${note}\n`;
+      });
+
+      const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.setAttribute('download', `${myCardId || 'my'}_학술인연_목록.csv`);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert('📥 엑셀 파일이 다운로드되었습니다. (10토큰 차감 완료)');
+    } catch (_) {
+      alert('오류가 발생했습니다.');
+    }
+  };
+
+  // ── 발표 자료 / 강의 소개서 PDF 업로드 (30토큰 차감) ──────────────────────
+  const handleUploadSlideFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !myCardId) return;
+    if (credits < 30) return alert('발표자료/강의소개서 쉘프 등록은 30토큰이 필요합니다.');
+    const title = prompt('발표 자료 또는 강의 소개서의 제목을 입력해 주세요:', file.name);
+    if (!title) return;
+
+    setUploadingSlide(true);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', myCardId);
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw new Error('User not found');
+        const current = userDoc.data().credits || 0;
+        if (current < 30) throw new Error('INSUFFICIENT');
+
+        transaction.update(userRef, { credits: current - 30 });
+        const logRef = doc(collection(db, 'users', myCardId, 'logs'));
+        transaction.set(logRef, {
+          type: '사용',
+          amount: -30,
+          reason: `발표자료/강의소개서 등록 (${title})`,
+          date: new Date(),
+        });
+      });
+
+      const storageRef = ref(storage, `slide_shelves/${myCardId}_${Date.now()}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      const newSlide = {
+        title,
+        desc: file.name,
+        fileUrl: url,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      const existingShelf = formData.slide_shelf || [];
+      const updatedShelf = [...existingShelf, newSlide];
+      setFormData((prev: any) => ({ ...prev, slide_shelf: updatedShelf }));
+
+      alert('📂 발표자료/강의소개서 쉘프에 추가되었습니다! (30토큰 차감 완료)');
+    } catch (_) {
+      alert('오류가 발생했습니다.');
+    } finally {
+      setUploadingSlide(false);
+      e.target.value = '';
+    }
   };
 
   // ── 엑셀(CSV) 다운로드 ──────────────────────────────────────────────────────
@@ -524,6 +644,84 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* ── 🤝 수신된 학술 인연 기록 (학회/미팅 메모) ── */}
+        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1a237e', fontWeight: 'bold' }}>
+                🤝 수신된 학술 인연 기록 ({academicNotes.length}건)
+              </h3>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#666' }}>
+                학회/세미나에서 만난 인사들이 남긴 만남 메모 목록입니다.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleExportAcademicNotesCsv}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#1565c0',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                }}
+              >
+                📥 엑셀 추출 (-10토큰)
+              </button>
+              <button
+                onClick={() => setShowAcademicNotes(!showAcademicNotes)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #ccc',
+                  background: '#f9f9f9',
+                  color: '#333',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                {showAcademicNotes ? '접기' : '목록 보기'}
+              </button>
+            </div>
+          </div>
+
+          {showAcademicNotes && (
+            <div style={{ marginTop: '16px', borderTop: '1px solid #eee', paddingTop: '14px' }}>
+              {academicNotes.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: '0.88rem' }}>
+                  아직 수신된 학술 인연 기록이 없습니다.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {academicNotes.map((n, idx) => (
+                    <div key={idx} style={{ background: '#f8f9fa', border: '1px solid #e2e8f0', padding: '12px 14px', borderRadius: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '0.95rem', color: '#1a237e' }}>{n.name}</strong>
+                        <span style={{ fontSize: '0.75rem', color: '#888' }}>{n.dateStr}</span>
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#1565c0', fontWeight: 'bold', marginBottom: '2px' }}>
+                        🏛️ 행사/학회: {n.event || '미팅'}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#2e7d32', marginBottom: '4px' }}>
+                        📞 연락처: {n.contact}
+                      </div>
+                      {n.note && (
+                        <div style={{ fontSize: '0.82rem', color: '#444', background: '#ffffff', padding: '8px', borderRadius: '6px', border: '1px solid #e0e0e0', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                          📝 대화 메모: {n.note}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* ── 📩 수신된 연락처 (Leads - 역방향 연락처 교환) ── */}
         <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -670,6 +868,53 @@ export default function AdminPage() {
               <input type="text" placeholder="예: ENFP (비워두면 방문자 성향만 분석)" value={formData.ownerMbti || ''} onChange={e => setFormData({ ...formData, ownerMbti: e.target.value.toUpperCase() })} style={{ ...inputStyle, border: '1px solid #ce93d8' }} maxLength={4} />
             </div>
           )}
+        </div>
+
+        {/* ── 📂 발표 자료 및 강의 소개서 라이브러리 쉘프 관리 (30토큰 차감) ── */}
+        <div style={{ background: '#f3e5f5', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #ce93d8' }}>
+          <h3 style={{ marginTop: 0, fontSize: '1rem', color: '#6a1b9a' }}>📂 발표 자료 & 강의 소개서 쉘프 관리</h3>
+          <p style={{ fontSize: '0.85rem', color: '#4a148c', marginBottom: '10px' }}>
+            학회 발표 PPT/PDF 자료나 강의 계획서 PDF를 업로드하여 명함 방문자에게 1초 전달할 수 있습니다. (-30토큰 차감)
+          </p>
+
+          {formData.slide_shelf?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+              {formData.slide_shelf.map((slide: any, idx: number) => (
+                <div key={idx} style={{ background: 'white', border: '1px solid #e1bee7', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ fontSize: '0.88rem', color: '#4a148c' }}>{slide.title}</strong>
+                    <div style={{ fontSize: '0.75rem', color: '#7b1fa2' }}>{slide.desc}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const updated = formData.slide_shelf.filter((_: any, i: number) => i !== idx);
+                      setFormData({ ...formData, slide_shelf: updated });
+                    }}
+                    style={{ border: 'none', background: '#ffcdd2', color: '#c62828', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer' }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label
+            style={{
+              display: 'inline-block',
+              background: '#6a1b9a',
+              color: 'white',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: 'bold',
+              cursor: uploadingSlide ? 'wait' : 'pointer',
+              opacity: uploadingSlide ? 0.7 : 1,
+            }}
+          >
+            {uploadingSlide ? '📂 업로드 및 세팅 중...' : '📂 발표자료/강의소개서 PDF 업로드 (-30토큰)'}
+            <input type="file" hidden onChange={handleUploadSlideFile} accept=".pdf,.ppt,.pptx" disabled={uploadingSlide} />
+          </label>
         </div>
 
         {/* ── AI 챗봇 성격 설정 (커스텀 프롬프트) ── */}

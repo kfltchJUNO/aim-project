@@ -83,8 +83,129 @@ export default function NameCardClient({
     } catch (_) {
       alert('능력치 카드를 생성하는 중 오류가 발생했습니다.');
       setSkillCardOpen(false);
+  // ─── 학술 인연 기록 모달 ───
+  const [academicNoteModalOpen, setAcademicNoteModalOpen] = useState(false);
+  const [academicNoteForm, setAcademicNoteForm] = useState({ name: '', event: '', contact: '', note: '' });
+  const [submittingAcademicNote, setSubmittingAcademicNote] = useState(false);
+
+  const handleSendAcademicNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!academicNoteForm.name.trim() || !academicNoteForm.contact.trim()) {
+      alert('성함과 연락처를 입력해 주세요.');
+      return;
+    }
+    setSubmittingAcademicNote(true);
+    try {
+      await addDoc(collection(db, 'users', params.username, 'academic_notes'), {
+        name: academicNoteForm.name.trim(),
+        event: academicNoteForm.event.trim() || '학회/세미나 미팅',
+        contact: academicNoteForm.contact.trim(),
+        note: academicNoteForm.note.trim(),
+        createdAt: serverTimestamp(),
+      });
+      alert('🤝 인연 기록이 전달되었습니다!');
+      setAcademicNoteForm({ name: '', event: '', contact: '', note: '' });
+      setAcademicNoteModalOpen(false);
+    } catch (_) {
+      alert('전송 중 오류가 발생했습니다.');
     } finally {
-      setLoadingSkillCard(false);
+      setSubmittingAcademicNote(false);
+    }
+  };
+
+  // ─── 학술 CV (이력서) PDF 1초 생성 및 다운로드 (20토큰 차감) ───
+  const handleDownloadAcademicCv = async () => {
+    if (!confirm(`📄 '${data.name}'님의 최신 학술 CV (이력서) PDF를 생성하시겠습니까?\n(20토큰이 차감됩니다)`)) return;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', params.username);
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists()) throw new Error('User not found');
+        const currentCredits = userDoc.data().credits || 0;
+        if (currentCredits < 20) throw new Error('INSUFFICIENT');
+
+        transaction.update(userRef, { credits: currentCredits - 20 });
+        const logRef = doc(collection(db, 'users', params.username, 'logs'));
+        transaction.set(logRef, {
+          type: '사용',
+          amount: -20,
+          reason: '학술 CV (이력서) PDF 생성',
+          date: serverTimestamp(),
+        });
+      });
+
+      // HTML CV 문서 창 열기 및 인쇄/PDF 저장 트리가
+      const win = window.open('', '_blank');
+      if (!win) return alert('팝업 차단을 해제해 주세요.');
+
+      const cvHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>${data.name} - 학술 CV (Curriculum Vitae)</title>
+          <style>
+            body { font-family: 'Apple SD Gothic Neo', sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+            h1 { font-size: 26px; border-bottom: 2px solid #1e293b; padding-bottom: 8px; margin-bottom: 4px; }
+            .subtitle { font-size: 15px; color: #475569; margin-bottom: 20px; }
+            .section-title { font-size: 18px; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-top: 24px; margin-bottom: 12px; font-weight: bold; }
+            .item { margin-bottom: 10px; }
+            .item-title { font-weight: bold; font-size: 15px; }
+            .item-date { color: #64748b; font-size: 13px; }
+            .item-desc { font-size: 14px; color: #334155; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>${data.name || ''} CV</h1>
+          <div class="subtitle">${data.role || ''} | 연락처: ${data.owner_email || ''}</div>
+          
+          ${data.intro ? `<div class="section-title">📌 프로필 개요</div><div>${data.intro}</div>` : ''}
+
+          ${data.history?.length ? `
+            <div class="section-title">🎓 학력 및 경력 사항</div>
+            ${data.history.map((h: any) => `
+              <div class="item">
+                <div class="item-title">${h.title} <span class="item-date">(${h.date})</span></div>
+                <div class="item-desc">${h.desc || ''}</div>
+              </div>
+            `).join('')}
+          ` : ''}
+
+          ${data.projects?.length ? `
+            <div class="section-title">🔬 연구 실적 및 대표 프로젝트</div>
+            ${data.projects.map((p: any) => `
+              <div class="item">
+                <div class="item-title">${p.title}</div>
+                <div class="item-desc">${p.desc || ''}</div>
+              </div>
+            `).join('')}
+          ` : ''}
+
+          ${data.custom_knowledge?.length ? `
+            <div class="section-title">💡 대표 전문 지식 & 학술 자격</div>
+            <ul>
+              ${data.custom_knowledge.map((k: string) => `<li>${k}</li>`).join('')}
+            </ul>
+          ` : ''}
+
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+        </html>
+      `;
+
+      win.document.write(cvHtml);
+      win.document.close();
+      alert('📄 학술 CV (이력서) PDF 문서가 생성되었습니다! (20토큰 차감 완료)');
+    } catch (e: any) {
+      if (e.message === 'INSUFFICIENT') {
+        alert('토큰이 부족합니다. (CV 생성 비용: 20토큰)');
+      } else {
+        alert('CV 생성 중 오류가 발생했습니다.');
+      }
     }
   };
 
@@ -274,15 +395,21 @@ export default function NameCardClient({
             <h1 style={{ fontSize: '1.8rem', margin: '0 0 8px 0', fontWeight: '800' }}>{data.name}</h1>
             <p style={{ fontSize: '0.95rem', opacity: 0.9, margin: 0 }}>{data.role}</p>
 
-            {/* 헤더 버튼 그룹 (번역 + 연락처 저장 + 연락처 전달 + AI능력치카드 + QR + 공유) */}
+            {/* 헤더 버튼 그룹 (번역 + CV 생성 + 만남 기록 + 연락처 저장 + 연락처 전달 + AI능력치카드 + QR + 공유) */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '15px', flexWrap: 'wrap' }}>
               {isTranslationEnabled && (
                 <button onClick={handleTranslate} style={headerBtnStyle}>🌐 English</button>
               )}
+              <button onClick={handleDownloadAcademicCv} style={{ ...headerBtnStyle, background: 'rgba(255,255,255,0.25)', fontWeight: 'bold' }}>
+                📄 학술 CV 생성
+              </button>
+              <button onClick={() => setAcademicNoteModalOpen(true)} style={{ ...headerBtnStyle, background: 'rgba(255,255,255,0.25)', fontWeight: 'bold' }}>
+                🤝 만남 기록
+              </button>
               <button onClick={handleDownloadVcard} style={headerBtnStyle}>
                 📇 연락처 저장
               </button>
-              <button onClick={() => setLeadModalOpen(true)} style={{ ...headerBtnStyle, background: 'rgba(255,255,255,0.25)', fontWeight: 'bold' }}>
+              <button onClick={() => setLeadModalOpen(true)} style={headerBtnStyle}>
                 📩 내 연락처 전달
               </button>
               <button onClick={handleFetchSkillCard} style={{ ...headerBtnStyle, background: 'rgba(255,215,0,0.25)', border: '1px solid rgba(255,215,0,0.5)', fontWeight: 'bold' }}>
@@ -430,6 +557,33 @@ export default function NameCardClient({
         return null;
       })}
 
+      {/* ── 📂 발표 자료 및 강의 소개서 쉘프 ── */}
+      {data.slide_shelf?.length > 0 && (
+        <div style={secWrapStyle}>
+          <Section title="📂 발표 자료 & 강의 소개서 라이브러리" defaultOpen={true} themeColor={colors.theme} isDark={isDark}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {data.slide_shelf.map((slide: any, idx: number) => (
+                <div key={idx} style={{ padding: '12px 14px', background: isDark ? 'rgba(255,255,255,0.06)' : '#f8f9fa', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ fontSize: '0.95rem', color: textColor, display: 'block' }}>{slide.title}</strong>
+                    {slide.desc && <span style={{ fontSize: '0.8rem', color: subColor }}>{slide.desc}</span>}
+                  </div>
+                  <a
+                    href={slide.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => trackClick('slide', slide.title, slide.fileUrl)}
+                    style={{ padding: '8px 14px', background: colors.theme, color: 'white', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
+                  >
+                    📥 PDF 다운로드
+                  </a>
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
+      )}
+
       {/* ── 챗봇 & 방명록 ── */}
       <div style={{ padding: '20px' }}>
         {isChatbotEnabled && (
@@ -445,6 +599,115 @@ export default function NameCardClient({
         <div style={{ height: '30px' }} />
         <Guestbook username={params.username} themeColor={colors.theme} isDark={isDark} />
       </div>
+
+      {/* ── 🤝 학회/미팅 만남 기록 모달 ── */}
+      {academicNoteModalOpen && (
+        <div style={modalOverlay} onClick={() => setAcademicNoteModalOpen(false)}>
+          <div
+            style={{
+              background: isDark ? '#1a1a2e' : 'white',
+              color: textColor,
+              padding: '24px 20px',
+              borderRadius: '24px',
+              maxWidth: '360px',
+              width: '90%',
+              textAlign: 'left',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: '1.2rem', margin: '0 0 6px 0', fontWeight: 'bold' }}>
+              🤝 {data.name}님과의 만남 기록 남기기
+            </h2>
+            <p style={{ fontSize: '0.82rem', color: subColor, margin: '0 0 16px 0' }}>
+              어느 학회/세미나에서 만났는지 남겨주시면 서로의 학술 인연을 쉽게 기억할 수 있습니다.
+            </p>
+
+            <form onSubmit={handleSendAcademicNote} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>성함 *</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="예: 홍길동 연구원"
+                  value={academicNoteForm.name}
+                  onChange={(e) => setAcademicNoteForm({ ...academicNoteForm, name: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>학회 / 세미나 / 행사명</label>
+                <input
+                  type="text"
+                  placeholder="예: 2026 한국인공지능학회 하계 학술대회"
+                  value={academicNoteForm.event}
+                  onChange={(e) => setAcademicNoteForm({ ...academicNoteForm, event: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>연락처 (전화번호 / 이메일) *</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="010-0000-0000 또는 email@domain.com"
+                  value={academicNoteForm.contact}
+                  onChange={(e) => setAcademicNoteForm({ ...academicNoteForm, contact: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 'bold', color: subColor, display: 'block', marginBottom: '4px' }}>대화 메모 / 공동 연구 주제</label>
+                <textarea
+                  placeholder="세미나 세션 내용이나 대화 나누었던 관심 연구 분야"
+                  value={academicNoteForm.note}
+                  onChange={(e) => setAcademicNoteForm({ ...academicNoteForm, note: e.target.value })}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '0.9rem', height: '60px', resize: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                <button
+                  type="submit"
+                  disabled={submittingAcademicNote}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: colors.theme,
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  {submittingAcademicNote ? '전송 중...' : '만남 기록 전달'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAcademicNoteModalOpen(false)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: '1px solid #ccc',
+                    background: 'transparent',
+                    color: textColor,
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── 🏆 AI 능력치 카드 팝업 모달 ── */}
       {skillCardOpen && (
