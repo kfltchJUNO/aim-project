@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { getDoc, doc } from 'firebase/firestore';
 
-type ChatMessage = { role: string; text: string; formLink?: string };
+type ChatMessage = { role: string; text: string; formLink?: string; btnLabel?: string };
 
 type Props = {
   context: any;
@@ -43,7 +43,7 @@ export default function ChatBot({ context, username, themeColor = '#1a237e', isO
         body: JSON.stringify({ message: promptText, context, username, mode: 'chat' }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink, btnLabel: data.btnLabel }]);
     } catch (_) {
       setMessages(prev => [...prev, { role: 'bot', text: '네트워크 오류' }]);
     } finally {
@@ -91,7 +91,7 @@ export default function ChatBot({ context, username, themeColor = '#1a237e', isO
         body: JSON.stringify({ message: userMsg, context, username, mode: 'chat' }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink, btnLabel: data.btnLabel }]);
     } catch (_) {
       setMessages(prev => [...prev, { role: 'bot', text: '네트워크 오류' }]);
     } finally {
@@ -182,7 +182,7 @@ export default function ChatBot({ context, username, themeColor = '#1a237e', isO
                         fontSize: '0.85rem', textDecoration: 'none',
                       }}
                     >
-                      📝 제작 문의 폼 작성하기
+                      {msg.btnLabel || '🚀 셀프 명함 신청하기'}
                     </a>
                   </div>
                 )}

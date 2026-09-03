@@ -6,8 +6,8 @@ import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from
 // 토큰 비용 (서버에서만 차감)
 const TOKEN_COST: Record<string, number> = { chat: 2, quiz: 3, synergy: 3, translate: 1, skill_card: 3, icebreaker: 0 };
 
-// 제작 문의 구글폼 URL — 모든 명함에서 동일하게 사용
-const PRODUCTION_INQUIRY_FORM_URL = 'https://forms.gle/Y3hqnTYhxN5cQ4ka6';
+// 셀프 온보딩 신청 페이지 URL — 모든 명함에서 동일하게 사용
+const PRODUCTION_INQUIRY_FORM_URL = 'https://aim-nc.vercel.app/#onboarding';
 
 // 제작 문의로 판단할 키워드 (하나라도 포함되면 매칭)
 const PRODUCTION_INQUIRY_KEYWORDS = [
@@ -50,14 +50,15 @@ export async function POST(req: Request) {
     }
 
     // ================================================================
-    // 2. 제작 문의 감지 → 구글폼 링크 즉시 안내 (토큰 차감 없음, AI 호출 없음)
+    // 2. 제작 문의 감지 → 셀프 온보딩 신청 연결 (토큰 차감 없음, AI 호출 없음)
     // ================================================================
     if (mode === 'chat' && message) {
       const isInquiry = PRODUCTION_INQUIRY_KEYWORDS.some(kw => message.includes(kw));
       if (isInquiry) {
         return NextResponse.json({
-          reply: '저처럼 AI 챗봇이 들어간 전자명함을 만들어보고 싶으신가요? 😊 아래 폼을 작성해주시면 빠르게 안내드릴게요!',
+          reply: '저처럼 AI 챗봇이 들어간 나만의 전자명함을 만들어보고 싶으신가요? 😊 아래 버튼을 누르면 30초 만에 셀프 명함 신청 및 생성이 가능합니다!',
           formLink: PRODUCTION_INQUIRY_FORM_URL,
+          btnLabel: '🚀 30초 만에 셀프 명함 신청하기',
         });
       }
     }
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
     // ================================================================
     const metaInstruction = `
 [최상위 절대 규칙]
-1. 이 서비스의 제작 문의, 결제, 요금 등에 대해 질문하면 "저처럼 AI 챗봇이 들어간 전자명함이 궁금하신가요? 아래 링크에서 문의해주세요: ${PRODUCTION_INQUIRY_FORM_URL}" 라고만 답변해.
+1. 이 서비스의 명함 제작 문의, 결제, 요금, 가입 등에 대해 질문하면 "저처럼 AI 챗봇이 들어간 전자명함이 궁금하신가요? 아래 버튼을 누르면 30초 만에 셀프 명함 신청 및 생성이 가능합니다: ${PRODUCTION_INQUIRY_FORM_URL}" 라고만 안내해.
 2. 답변 내용에 **강조표시**나 *기울임* 같은 마크다운(Markdown) 기호를 절대 사용하지 말고, 오직 깔끔한 순수 텍스트(Plain text)로만 자연스럽게 답변해.
 `;
 
