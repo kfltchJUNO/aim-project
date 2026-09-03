@@ -13,9 +13,10 @@ type Props = {
   themeColor?: string;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  initialPrompt?: string;
 };
 
-export default function ChatBot({ context, username, themeColor = '#1a237e', isOpen, onOpenChange }: Props) {
+export default function ChatBot({ context, username, themeColor = '#1a237e', isOpen, onOpenChange, initialPrompt }: Props) {
   const [input, setInput]       = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading]   = useState(false);
@@ -23,6 +24,32 @@ export default function ChatBot({ context, username, themeColor = '#1a237e', isO
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ownerName = context?.name || '명함 주인';
+
+  // initialPrompt 전달 시 자동 발송
+  useEffect(() => {
+    if (initialPrompt && isOpen) {
+      sendCustomPrompt(initialPrompt);
+    }
+  }, [initialPrompt, isOpen]);
+
+  const sendCustomPrompt = async (promptText: string) => {
+    if (!promptText.trim() || loading) return;
+    setMessages(prev => [...prev, { role: 'user', text: promptText }]);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: promptText, context, username, mode: 'chat' }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || data.error || '오류가 발생했습니다.', formLink: data.formLink }]);
+    } catch (_) {
+      setMessages(prev => [...prev, { role: 'bot', text: '네트워크 오류' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 처음 5초간 라벨 노출 후 아이콘만 남김 (계속 떠 있으면 거추장스러우니)
   useEffect(() => {

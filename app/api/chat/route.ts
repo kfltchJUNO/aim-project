@@ -4,7 +4,7 @@ import { db } from '@/lib/firebase';
 import { doc, runTransaction, collection, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 
 // 토큰 비용 (서버에서만 차감)
-const TOKEN_COST: Record<string, number> = { chat: 2, quiz: 3, synergy: 3, translate: 1 };
+const TOKEN_COST: Record<string, number> = { chat: 2, quiz: 3, synergy: 3, translate: 1, skill_card: 3, icebreaker: 0 };
 
 // 제작 문의 구글폼 URL — 모든 명함에서 동일하게 사용
 const PRODUCTION_INQUIRY_FORM_URL = 'https://forms.gle/Y3hqnTYhxN5cQ4ka6';
@@ -149,6 +149,38 @@ export async function POST(req: Request) {
     } else if (mode === 'translate') {
       systemPrompt = `전문 번역가로서 아래 데이터를 '${targetLang}'로 번역해. 순수 JSON만 출력.`;
       userPrompt   = JSON.stringify(context);
+    } else if (mode === 'skill_card') {
+      systemPrompt += `
+[임무] 명함 주인(${context?.name}, 직함: ${context?.role})의 프로필과 지식을 바탕으로 RPG 능력치 카드를 JSON으로 출력해.
+[규칙]
+1. 마크다운(\`\`\`)을 쓰지 말고 순수 JSON만 출력해.
+2. stats는 정확히 5개 항목(연구 전문성, 기술 구현력, 학술 영향력, 문제 해결력, 글로벌 소통 등)과 0~100점 점수로 구성해.
+3. cardTitle은 멋진 RPG/전문가 칭호 (예: "AI 융합 알고리즘 연금술사", "스마트 바이오 연구 랭커").
+4. summaryBadge는 "S급 연구자", "마스터 프로그래머" 등 한줄 배지.
+5. specialSkill은 핵심 대표 스킬 1문장.
+[형식] {
+  "cardTitle": "칭호",
+  "summaryBadge": "배지",
+  "specialSkill": "대표 스킬 1문장",
+  "stats": [
+    { "label": "연구 전문성", "score": 95 },
+    { "label": "기술 구현력", "score": 90 },
+    { "label": "학술 영향력", "score": 88 },
+    { "label": "문제 해결력", "score": 92 },
+    { "label": "글로벌 소통", "score": 85 }
+  ]
+}
+[프로필 정보]: ${JSON.stringify(context)}
+`;
+      userPrompt = 'AI 능력치 카드 JSON 생성';
+    } else if (mode === 'icebreaker') {
+      systemPrompt += `
+[임무] 명함 주인(${context?.name}, 직함: ${context?.role})의 프로필을 바탕으로 방문자가 챗봇에게 물어보기 좋은 인상적인 질문 3가지를 추출해.
+[규칙] 마크다운 없이 순수 JSON만 출력해.
+[형식] { "prompts": ["질문1", "질문2", "질문3"] }
+[프로필 정보]: ${JSON.stringify(context)}
+`;
+      userPrompt = '아이스브레이커 질문 3가지 JSON 생성';
     } else {
       systemPrompt += `\n[정보]: ${JSON.stringify(context)}`;
       userPrompt    = message;
@@ -157,7 +189,7 @@ export async function POST(req: Request) {
     // ================================================================
     // 6. Gemini API 호출
     // ================================================================
-    const isJsonMode = mode === 'quiz' || mode === 'synergy' || mode === 'translate';
+    const isJsonMode = mode === 'quiz' || mode === 'synergy' || mode === 'translate' || mode === 'skill_card' || mode === 'icebreaker';
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,

@@ -40,10 +40,53 @@ export default function NameCardClient({
   const [activeFeature, setActiveFeature] = useState<'quiz' | 'synergy' | null>(null);
   const [shareMsg, setShareMsg] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatInitialPrompt, setChatInitialPrompt] = useState<string | undefined>(undefined);
   const [qrOpen, setQrOpen] = useState(false);
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [leadForm, setLeadForm] = useState({ name: '', affiliation: '', contact: '', memo: '' });
   const [submittingLead, setSubmittingLead] = useState(false);
+
+  const [skillCardOpen, setSkillCardOpen] = useState(false);
+  const [skillCardData, setSkillCardData] = useState<any>(null);
+  const [loadingSkillCard, setLoadingSkillCard] = useState(false);
+
+  const handleFetchSkillCard = async () => {
+    if (skillCardData) {
+      setSkillCardOpen(true);
+      return;
+    }
+    setLoadingSkillCard(true);
+    setSkillCardOpen(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'skill_card',
+          context: data,
+          username: params.username,
+        }),
+      });
+      const result = await res.json();
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(result.reply);
+      } catch (_) {
+        parsed = result;
+      }
+      if (parsed && (parsed.stats || parsed.cardTitle)) {
+        setSkillCardData(parsed);
+      } else {
+        alert(result.error || 'AI 능력치 카드 생성에 실패했습니다.');
+        setSkillCardOpen(false);
+      }
+    } catch (_) {
+      alert('능력치 카드를 생성하는 중 오류가 발생했습니다.');
+      setSkillCardOpen(false);
+    } finally {
+      setLoadingSkillCard(false);
+    }
+  };
 
   // ─── 링크 클릭 트래킹 ──────────────────────────────────────────────────
   const trackClick = async (type: string, label: string, targetUrl?: string) => {
@@ -231,7 +274,7 @@ export default function NameCardClient({
             <h1 style={{ fontSize: '1.8rem', margin: '0 0 8px 0', fontWeight: '800' }}>{data.name}</h1>
             <p style={{ fontSize: '0.95rem', opacity: 0.9, margin: 0 }}>{data.role}</p>
 
-            {/* 헤더 버튼 그룹 (번역 + 연락처 저장 + 연락처 전달 + QR + 공유) */}
+            {/* 헤더 버튼 그룹 (번역 + 연락처 저장 + 연락처 전달 + AI능력치카드 + QR + 공유) */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '15px', flexWrap: 'wrap' }}>
               {isTranslationEnabled && (
                 <button onClick={handleTranslate} style={headerBtnStyle}>🌐 English</button>
@@ -241,6 +284,9 @@ export default function NameCardClient({
               </button>
               <button onClick={() => setLeadModalOpen(true)} style={{ ...headerBtnStyle, background: 'rgba(255,255,255,0.25)', fontWeight: 'bold' }}>
                 📩 내 연락처 전달
+              </button>
+              <button onClick={handleFetchSkillCard} style={{ ...headerBtnStyle, background: 'rgba(255,215,0,0.25)', border: '1px solid rgba(255,215,0,0.5)', fontWeight: 'bold' }}>
+                🏆 AI 능력치 카드
               </button>
               <button onClick={() => setQrOpen(true)} style={headerBtnStyle}>
                 📷 QR 코드
@@ -259,11 +305,46 @@ export default function NameCardClient({
         );
       })()}
 
-      {/* ── AI 챗봇 CTA (킥인 기능 강조) ── */}
+      {/* ── AI 챗봇 CTA & 아이스브레이커 질문 칩 ── */}
       {isChatbotEnabled && (
         <div style={{ padding: '0 20px', marginBottom: '20px' }}>
+          {/* 아이스브레이커 질문 칩 3개 */}
+          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '8px', WebkitOverflowScrolling: 'touch' }}>
+            {[
+              `💡 ${data.name}님의 대표 연구/업적은?`,
+              `📑 주요 프로젝트 및 논문 소개`,
+              `🤝 공동 연구 및 협업 문의방법`,
+            ].map((prompt, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setChatInitialPrompt(prompt);
+                  setChatOpen(true);
+                  trackClick('icebreaker', prompt);
+                }}
+                style={{
+                  whiteSpace: 'nowrap',
+                  padding: '7px 12px',
+                  borderRadius: '20px',
+                  border: '1px solid #b3c9f0',
+                  background: 'white',
+                  color: colors.theme,
+                  fontSize: '0.78rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
           <button
-            onClick={() => setChatOpen(true)}
+            onClick={() => {
+              setChatInitialPrompt(undefined);
+              setChatOpen(true);
+            }}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: '14px',
               padding: '16px 18px', borderRadius: '16px', border: 'none', cursor: 'pointer',
@@ -390,11 +471,132 @@ export default function NameCardClient({
             themeColor={colors.theme}
             isOpen={chatOpen}
             onOpenChange={setChatOpen}
+            initialPrompt={chatInitialPrompt}
           />
         )}
         <div style={{ height: '30px' }} />
         <Guestbook username={params.username} themeColor={colors.theme} isDark={isDark} />
       </div>
+
+      {/* ── 🏆 AI 능력치 카드 팝업 모달 ── */}
+      {skillCardOpen && (
+        <div style={modalOverlay} onClick={() => setSkillCardOpen(false)}>
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+              color: 'white',
+              padding: '28px 22px',
+              borderRadius: '24px',
+              maxWidth: '360px',
+              width: '90%',
+              textAlign: 'center',
+              boxShadow: '0 15px 40px rgba(0,0,0,0.5)',
+              border: '1px solid rgba(255,215,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {loadingSkillCard ? (
+              <div style={{ padding: '40px 0' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🤖</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>AI가 능력치를 분석 중입니다...</div>
+                <div style={{ fontSize: '0.8rem', color: '#a5b4fc', marginTop: '6px' }}>3토큰 차감 중</div>
+              </div>
+            ) : skillCardData ? (
+              <div>
+                <div style={{ display: 'inline-block', background: 'rgba(255,215,0,0.15)', border: '1px solid #fde047', color: '#fde047', padding: '4px 14px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  🏆 {skillCardData.summaryBadge || 'S급 AI 전문가'}
+                </div>
+                <h2 style={{ fontSize: '1.4rem', margin: '0 0 4px 0', fontWeight: '900', color: '#ffffff' }}>
+                  {skillCardData.cardTitle || `${data.name}님의 능력치 카드`}
+                </h2>
+                <p style={{ fontSize: '0.82rem', color: '#cbd5e1', margin: '0 0 16px 0' }}>
+                  {data.name} ({data.role})
+                </p>
+
+                {/* SVG 5각 헥사곤/펜타곤 레이더 차트 */}
+                <div style={{ width: '220px', height: '220px', margin: '0 auto 16px', position: 'relative' }}>
+                  <svg width="220" height="220" viewBox="0 0 220 220">
+                    {/* 배경 가이드 원 및 축선 */}
+                    {[0.2, 0.4, 0.6, 0.8, 1.0].map((rRatio, idx) => {
+                      const r = 75 * rRatio;
+                      const pointsStr = [0, 1, 2, 3, 4].map(i => {
+                        const angle = (Math.PI / 180) * (i * 72 - 90);
+                        const x = 110 + r * Math.cos(angle);
+                        const y = 110 + r * Math.sin(angle);
+                        return `${x},${y}`;
+                      }).join(' ');
+                      return <polygon key={idx} points={pointsStr} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
+                    })}
+
+                    {/* 축선 */}
+                    {[0, 1, 2, 3, 4].map(i => {
+                      const angle = (Math.PI / 180) * (i * 72 - 90);
+                      const x = 110 + 75 * Math.cos(angle);
+                      const y = 110 + 75 * Math.sin(angle);
+                      return <line key={i} x1="110" y1="110" x2={x} y2={y} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />;
+                    })}
+
+                    {/* 실체 데이터 레이더 다각형 */}
+                    {(() => {
+                      const stats = skillCardData.stats || [
+                        { label: '전문성', score: 90 }, { label: '구현력', score: 85 },
+                        { label: '영향력', score: 88 }, { label: '문제해결', score: 92 },
+                        { label: '소통력', score: 80 }
+                      ];
+                      const polyPoints = stats.map((st: any, i: number) => {
+                        const r = 75 * (Math.min(100, Math.max(20, st.score)) / 100);
+                        const angle = (Math.PI / 180) * (i * 72 - 90);
+                        const x = 110 + r * Math.cos(angle);
+                        const y = 110 + r * Math.sin(angle);
+                        return `${x},${y}`;
+                      }).join(' ');
+                      return (
+                        <polygon
+                          points={polyPoints}
+                          fill="rgba(99, 102, 241, 0.45)"
+                          stroke="#818cf8"
+                          strokeWidth="2.5"
+                        />
+                      );
+                    })()}
+                  </svg>
+                </div>
+
+                {/* 5개 스탯 항목 표시 */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', textAlign: 'left', background: 'rgba(255,255,255,0.05)', padding: '10px 12px', borderRadius: '12px', marginBottom: '14px' }}>
+                  {(skillCardData.stats || []).map((st: any, idx: number) => (
+                    <div key={idx} style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                      <span>• {st.label}</span>
+                      <strong style={{ color: '#fde047' }}>{st.score}점</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {skillCardData.specialSkill && (
+                  <div style={{ fontSize: '0.8rem', background: 'rgba(99,102,241,0.2)', color: '#c7d2fe', padding: '10px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(165,180,252,0.3)' }}>
+                    ⚡ <strong>필살기:</strong> {skillCardData.specialSkill}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={handleShare}
+                    style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.88rem' }}
+                  >
+                    {shareMsg || '📸 카드 공유하기'}
+                  </button>
+                  <button
+                    onClick={() => setSkillCardOpen(false)}
+                    style={{ padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: 'white', cursor: 'pointer', fontSize: '0.88rem' }}
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* ── 재미 기능 모달 ── */}
       <FunFeatures
