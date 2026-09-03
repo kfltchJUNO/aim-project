@@ -62,6 +62,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
+import { KANG_SAMPLE_DATA } from '@/app/api/seed-kang/route';
+
 export default async function NameCardPage({ params }: Props) {
   let initialData = null;
   try {
@@ -69,8 +71,12 @@ export default async function NameCardPage({ params }: Props) {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       initialData = docSnap.data();
+    } else if (params.username === 'kang') {
+      initialData = KANG_SAMPLE_DATA;
     }
-  } catch (_) {}
+  } catch (_) {
+    if (params.username === 'kang') initialData = KANG_SAMPLE_DATA;
+  }
 
   return <NameCardClient params={params} initialData={initialData} />;
 }

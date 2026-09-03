@@ -112,8 +112,11 @@ export default function HomePage() {
           <a href="#onboarding" style={{ padding: '16px 32px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', borderRadius: '16px', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 'bold', boxShadow: '0 10px 25px rgba(37, 99, 235, 0.4)' }}>
             ⚡ 30초 만에 셀프 명함 신청하기
           </a>
-          <Link href="/junho" target="_blank" style={{ padding: '16px 24px', background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', borderRadius: '16px', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.15)' }}>
-            👀 샘플 명함 체험하기 (/junho)
+          <Link href="/junho" target="_blank" style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', borderRadius: '16px', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.15)' }}>
+            🔬 연구원 예시 (/junho)
+          </Link>
+          <Link href="/kang" target="_blank" style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.08)', color: '#e2e8f0', borderRadius: '16px', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.15)' }}>
+            💪 피트니스 트레이너 예시 (/kang)
           </Link>
         </div>
       </section>

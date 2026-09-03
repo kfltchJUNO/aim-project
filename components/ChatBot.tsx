@@ -191,6 +191,61 @@ export default function ChatBot({ context, username, themeColor = '#1a237e', isO
             {loading && <div style={{ textAlign: 'left', color: '#888', fontSize: '0.8rem', marginLeft: '10px', marginTop: '5px' }}>AI가 생각 중... ✍️</div>}
           </div>
 
+          {/* 챗봇 내부 동적 퀵 질문 칩 3개 */}
+          <div style={{ padding: '8px 12px', background: '#f8f9fa', borderTop: '1px solid #eee', display: 'flex', gap: '6px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            {(() => {
+              const role = (context?.role || '').toLowerCase();
+              const name = context?.name || '명함 주인';
+              let questions = [
+                `💡 ${name}님에 대해 소개해 주세요!`,
+                `📑 대표적인 활동 및 이력 보기`,
+                `✉️ 연락처 및 상담 문의 방법`,
+              ];
+
+              if (role.includes('트레이너') || role.includes('피트니스') || role.includes('스포츠') || role.includes('헬스') || role.includes('pt')) {
+                questions = [
+                  `💪 체형 교정 & 맞춤 P.T 상담`,
+                  `🥗 개인별 식단 관리 노하우`,
+                  `📅 P.T 수업 예약 안내`,
+                ];
+              } else if (role.includes('교수') || role.includes('연구') || role.includes('박사') || role.includes('학회') || role.includes('연구원')) {
+                questions = [
+                  `💡 ${name}님의 대표 연구/논문은?`,
+                  `📑 주요 학술 발표 및 기술`,
+                  `🤝 공동 연구 및 협업 문의`,
+                ];
+              } else if (role.includes('개발') || role.includes('엔지니어') || role.includes('프로그래머') || role.includes('cto')) {
+                questions = [
+                  `💻 대표 기술 스택 & 프로젝트`,
+                  `🚀 외주/기술 자문 문의`,
+                  `📬 커피챗 신청 및 협업`,
+                ];
+              }
+
+              return questions.map((q, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => sendCustomPrompt(q)}
+                  disabled={loading}
+                  style={{
+                    whiteSpace: 'nowrap',
+                    padding: '6px 11px',
+                    borderRadius: '16px',
+                    border: `1px solid ${themeColor}44`,
+                    background: `${themeColor}12`,
+                    color: themeColor,
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  {q}
+                </button>
+              ));
+            })()}
+          </div>
+
           {/* 입력 영역 */}
           <div style={{ padding: '10px', background: 'white', borderTop: '1px solid #eee', display: 'flex', gap: '8px' }}>
             <input

@@ -305,41 +305,9 @@ export default function NameCardClient({
         );
       })()}
 
-      {/* ── AI 챗봇 CTA & 아이스브레이커 질문 칩 ── */}
+      {/* ── AI 챗봇 CTA ── */}
       {isChatbotEnabled && (
         <div style={{ padding: '0 20px', marginBottom: '20px' }}>
-          {/* 아이스브레이커 질문 칩 3개 */}
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '8px', WebkitOverflowScrolling: 'touch' }}>
-            {[
-              `💡 ${data.name}님의 대표 연구/업적은?`,
-              `📑 주요 프로젝트 및 논문 소개`,
-              `🤝 공동 연구 및 협업 문의방법`,
-            ].map((prompt, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setChatInitialPrompt(prompt);
-                  setChatOpen(true);
-                  trackClick('icebreaker', prompt);
-                }}
-                style={{
-                  whiteSpace: 'nowrap',
-                  padding: '7px 12px',
-                  borderRadius: '20px',
-                  border: '1px solid #b3c9f0',
-                  background: 'white',
-                  color: colors.theme,
-                  fontSize: '0.78rem',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-
           <button
             onClick={() => {
               setChatInitialPrompt(undefined);
